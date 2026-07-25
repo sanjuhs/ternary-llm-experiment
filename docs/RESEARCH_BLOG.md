@@ -648,3 +648,67 @@ rotation/codebook optimization, and a residual-free architecture.
 
 The project will keep all negative results. A useful experiment is not one that
 always says yes; it is one that shows exactly which “yes” is supported.
+
+## Three different finish lines
+
+“Fully ternary” can hide three different engineering objectives. The experiments
+now report them separately:
+
+1. **Exact two-bit activation storage.** Two binary residual planes consume
+   exactly two code bits per scalar. Binary is a subset of ternary arithmetic,
+   so a ternary datapath can process both planes. Dynamic scales and wider
+   accumulators are still required.
+2. **Ternary matrix operands.** Several ternary planes may represent one logical
+   activation. Every large matrix multiplication still consumes only
+   `-1/0/+1` codes, but two planes occupy four physical bits per scalar and three
+   planes occupy six unless entropy coding is used.
+3. **Near-float quality.** Four-bit or layer-mixed activations are currently the
+   strongest published route. They are completely quantized, but they are not
+   uniformly two-bit.
+
+Those goals overlap, but none implies the other. A design can have ternary
+operators without two-bit storage, or two-bit storage without matching float
+loss.
+
+### What the newest papers add
+
+[BitNet v2](https://arxiv.org/abs/2504.18415) shows that online Hadamard mixing
+can stabilize W1.58A4 training where the corresponding unrotated A4 treatment
+diverges. It supports our fixed-Hadamard arm, but it does not establish A2.
+
+[R2Q](https://arxiv.org/abs/2511.21736) decomposes a two-bit weight into two
+successive binary residual kernels. Our exact-two-bit activation arm adapts that
+representation to residual states. That activation use is our hypothesis, not a
+result claimed by R2Q.
+
+[TWLA](https://arxiv.org/abs/2606.13054) combines asymmetric ternary relocation,
+Kronecker orthogonal shaping, and adjacent-layer-aware mixed precision. Its
+strongest lesson for this project is that later or sensitive blocks should
+receive more activation capacity. It still targets W1.58A4 rather than a
+uniformly ternary residual stream.
+
+[CAT-Q](https://arxiv.org/abs/2606.26650) improves post-training ternary weights
+with learnable modulation, softened ternarization, and sliding-layer
+reconstruction. Those ideas are useful for the weight-conversion stage, but the
+paper retains A8/A16 activations and therefore does not solve our residual
+bottleneck.
+
+[ExTernD](https://arxiv.org/abs/2607.13511) takes a different route: expand a
+weight matrix into two ternary factors around a diagonal scale. Its reported
+Qwen3.5-4B result at expansion factor three is close to BF16 perplexity, but the
+effective storage is about 5.7 bits per original weight and the expanded factors
+increase operation count. It is a credible ternary-compute branch, not an exact
+two-bit-storage branch.
+
+[The Quantization Benefits of Residual-Free
+Transformers](https://arxiv.org/abs/2605.25880) attacks the activation
+distribution itself. Removing additive residual accumulation keeps activations
+closer to Gaussian and easier to quantize. Its evidence is at higher activation
+precision, so a residual-free TinyStories model is an architecture experiment,
+not yet proof of a ternary endpoint.
+
+Together, these papers suggest two honest follow-ups. For exact two-bit storage,
+improve the two binary planes with block reconstruction, groupwise fixed-point
+scales, and layer sensitivity training. For quality with ternary operators,
+allow additional ternary planes or expanded ternary factors and measure the
+extra storage and additions explicitly.

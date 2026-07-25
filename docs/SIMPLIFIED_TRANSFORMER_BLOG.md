@@ -259,3 +259,42 @@ The exact result inventory and arithmetic contract are in the
 in the [attention generation appendix](GATED_ATTENTION_GENERATION_SAMPLES.md)
 and the
 [fully ternary generation appendix](FULLY_TERNARY_GENERATION_SAMPLES.md).
+
+## There are really three versions of “fully ternary”
+
+This is easiest to understand by imagining that every number carries a tiny
+stack of cards.
+
+- With **one ternary card**, the number can be minus, zero, or plus. This is the
+  smallest representation, but our ordinary Transformer loses too much detail.
+- With **two binary cards**, the model gets four combinations using exactly two
+  bits. Every large multiplication is still only add or subtract. This is our
+  strict two-bit-storage experiment.
+- With **two or three ternary cards**, the model gets many more combinations and
+  preserves more detail. A ternary chip can still perform every large matrix
+  operation, but the stack now occupies four or six physical bits per number.
+
+So there are three separate questions:
+
+| Question | What would count as success? |
+|---|---|
+| Can the model be stored in about two bits? | Two binary cards or one packed ternary code at every large boundary |
+| Can a ternary chip run the big calculations? | Every matrix operand contains only minus, zero, or plus, even if it uses several planes |
+| Can quality match the normal model? | The loss stays within a declared margin on exactly the same validation text |
+
+Recent papers support different boxes. BitNet v2 and TWLA show that four-bit
+activations can work very well with ternary weights. R2Q shows how two binary
+refinement planes can encode a two-bit weight. ExTernD gets close to normal-model
+quality by expanding each matrix into several ternary factors, but spends more
+storage and additions. Residual-free Transformers try to redesign the model so
+the values are easier to compress in the first place.
+
+That gives us two sensible products rather than one vague promise:
+
+1. a **strict two-bit model**, where storage wins but quality may be lower; and
+2. a **ternary-compute model**, where all large operations suit a ternary chip
+   but several code planes may be used to preserve quality.
+
+We will continue to report both, including the cost of scales and wider
+temporary sums. Calling the second model “1.58-bit” would be misleading even
+though its actual multiplications are ternary.
