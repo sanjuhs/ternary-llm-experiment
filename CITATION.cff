@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this experimental code, please cite this repository."
+title: "Ternary LLM Experiment"
+type: software
+authors:
+  - family-names: "Sanju"
+repository-code: "https://github.com/sanjuhs/ternary-llm-experiment"
+license: MIT
+date-released: 2026-07-25
+version: 0.2.0

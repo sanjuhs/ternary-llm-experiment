@@ -1,0 +1,33 @@
+seed = 17
+mode = "float"
+device = "auto"
+
+[model]
+vocab_size = 4096
+context_length = 256
+d_model = 256
+n_layers = 6
+n_heads = 8
+ff_multiplier = 4
+dropout = 0.1
+activation_threshold = 0.5
+weight_threshold = 0.5
+
+[data]
+train_bin = "data/processed/train.bin"
+validation_bin = "data/processed/validation.bin"
+tokenizer = "data/processed/tokenizer.json"
+
+[train]
+batch_size = 16
+max_steps = 10000
+learning_rate = 0.0003
+min_learning_rate = 0.00003
+warmup_steps = 500
+weight_decay = 0.1
+grad_clip = 1.0
+eval_interval = 250
+eval_batches = 50
+checkpoint_interval = 500
+output_dir = "artifacts/tiny"
+log_interval = 10

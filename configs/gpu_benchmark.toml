@@ -1,0 +1,34 @@
+seed = 17
+mode = "float"
+device = "cuda"
+
+[model]
+vocab_size = 4096
+context_length = 256
+d_model = 256
+n_layers = 6
+n_heads = 8
+ff_multiplier = 4
+dropout = 0.1
+activation_threshold = 0.5
+weight_threshold = 0.5
+
+[data]
+train_bin = "data/full/train.bin"
+validation_bin = "data/full/validation.bin"
+tokenizer = "data/full/tokenizer.json"
+
+[train]
+batch_size = 64
+max_steps = 100
+learning_rate = 0.0003
+min_learning_rate = 0.00003
+warmup_steps = 20
+weight_decay = 0.1
+grad_clip = 1.0
+eval_interval = 100
+eval_batches = 10
+checkpoint_interval = 100
+output_dir = "artifacts/benchmark"
+log_interval = 10
+precision = "bf16"

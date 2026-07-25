@@ -1,0 +1,35 @@
+seed = 17
+mode = "ternary_weights"
+device = "auto"
+
+[model]
+vocab_size = 512
+context_length = 64
+d_model = 64
+n_layers = 2
+n_heads = 4
+ff_multiplier = 3
+dropout = 0.0
+activation_threshold = 0.5
+weight_threshold = 0.5
+
+[data]
+train_bin = "data/smoke/train.bin"
+validation_bin = "data/smoke/validation.bin"
+tokenizer = "data/smoke/tokenizer.json"
+
+[train]
+batch_size = 4
+max_steps = 100
+learning_rate = 0.001
+min_learning_rate = 0.0001
+warmup_steps = 2
+weight_decay = 0.0
+grad_clip = 1.0
+eval_interval = 10
+eval_batches = 10
+checkpoint_interval = 25
+output_dir = "artifacts/stochastic-smoke"
+log_interval = 5
+optimizer = "stochastic_ternary"
+transition_rate = 0.002

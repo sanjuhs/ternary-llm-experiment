@@ -1,0 +1,21 @@
+.DS_Store
+.idea/
+.vscode/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+
+# Local datasets, model runs, and caches
+data/
+artifacts/
+.cache/
+tmp/
+rough-practice/
+
+# Build products
+build/
+dist/
+*.egg-info/

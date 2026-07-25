@@ -1,0 +1,238 @@
+# Ternary LLM Experiment
+
+This repository tests whether a small GPT-style language model can learn TinyStories
+while its learned weights and persistent forward activations use ternary codes
+`{-1, 0, +1}`.
+
+The exact hypothesis, precision boundary, ablations, metrics, and later discrete
+learning stages are defined in [EXPERIMENT_PLAN.md](EXPERIMENT_PLAN.md). The raw
+conversation that motivated the project is preserved in [idea.md](idea.md).
+The results and COAT follow-up are explained for a broader audience in
+[docs/RESEARCH_BLOG.md](docs/RESEARCH_BLOG.md).
+
+## What is implemented
+
+- reproducible `uv` environment;
+- TinyStories download, deterministic selection, BPE tokenizer training, and binary
+  token shards;
+- a configurable decoder-only transformer;
+- `float`, `ternary_weights`, `ternary_activations`, `ternary_forward`, and
+  population-coded ternary modes;
+- Hadamard and calibrated COAT-style residual projections with matched A4 and
+  ternary-activation arms;
+- straight-through ternary fake quantization with per-row weight and per-token
+  activation scales;
+- training, validation, checkpoint/resume, and text generation;
+- unit tests and laptop-sized smoke/research configurations.
+
+The current code emulates ternary arithmetic with PyTorch tensors. It measures the
+learning behavior of ternary representations. A portable two-bit packed-weight
+reference validates storage and numerical correctness, but it deliberately does
+not claim a speedup without a fused device kernel.
+
+## Published artifacts
+
+- [Model checkpoints, packed weights, projections, and
+  metrics](https://huggingface.co/sanjuhs/ternary-llm-experiment)
+- [Complete tokenized TinyStories
+  stream](https://huggingface.co/datasets/sanjuhs/ternary-tinystories-4096)
+
+Generated data and checkpoints remain ignored by Git; the public Hub repositories
+hold 1.14 GB of experiment artifacts and 986 MB of reproducible token streams.
+
+## Setup
+
+`uv` manages the Python interpreter and virtual environment:
+
+```bash
+uv sync --extra dev
+uv run pytest
+```
+
+## Data
+
+The Hugging Face dataset contains about 2.14 million stories and about 1 GB of
+Parquet data. Download it into the repository-local cache:
+
+```bash
+uv run ternary-data download
+```
+
+Prepare the bounded first experiment (50,000 train and 2,000 validation stories):
+
+```bash
+uv run ternary-data prepare \
+  --max-train-stories 50000 \
+  --max-validation-stories 2000
+```
+
+Prepare all 2.12 million training stories with the same tokenizer:
+
+```bash
+uv run ternary-data prepare \
+  --full \
+  --output-dir data/full \
+  --tokenizer-from data/processed/tokenizer.json
+```
+
+For the very fast end-to-end smoke run:
+
+```bash
+uv run ternary-data prepare \
+  --output-dir data/smoke \
+  --max-train-stories 200 \
+  --max-validation-stories 50 \
+  --vocab-size 512
+```
+
+`download` writes size-checked Parquet shards under `data/raw`. `prepare` uses
+`data/huggingface` for its local Arrow cache, then writes a tokenizer, `uint16`
+token streams, and metadata under the selected output directory.
+
+## Train
+
+Smoke:
+
+```bash
+uv run ternary-train --config configs/smoke.toml
+```
+
+Research configuration:
+
+```bash
+uv run ternary-train --config configs/tiny.toml --mode float --run-name baseline
+uv run ternary-train --config configs/tiny.toml --mode ternary_weights --run-name weights
+uv run ternary-train --config configs/tiny.toml --mode ternary_activations --run-name activations
+uv run ternary-train --config configs/tiny.toml --mode ternary_forward --run-name strict
+```
+
+Full-corpus GPU configuration:
+
+```bash
+uv run ternary-train --config configs/full.toml --mode float --run-name float
+```
+
+Calibrate a COAT projection from an existing checkpoint and compare A4 with
+ternary activations:
+
+```bash
+uv run ternary-calibrate-projection \
+  --checkpoint artifacts/full-stage-a/ternary_weights/checkpoint.pt \
+  --config configs/full.toml \
+  --output artifacts/coat/ternary-weights-projection.pt
+
+uv run ternary-evaluate \
+  --checkpoint artifacts/full-stage-a/ternary_weights/checkpoint.pt \
+  --config configs/full.toml \
+  --mode coat_a4 \
+  --projection artifacts/coat/ternary-weights-projection.pt
+
+uv run ternary-evaluate \
+  --checkpoint artifacts/full-stage-a/ternary_weights/checkpoint.pt \
+  --config configs/full.toml \
+  --mode coat_ternary \
+  --projection artifacts/coat/ternary-weights-projection.pt
+```
+
+`coat_*` modes refuse to run without a calibrated projection. `hadamard_*` modes
+use a fixed normalized Hadamard matrix as the data-independent control.
+
+Population-coded residual pilot:
+
+```bash
+uv run ternary-train \
+  --config configs/full.toml \
+  --mode population_ternary \
+  --population-lanes 4 \
+  --max-steps 1000 \
+  --run-name p4
+```
+
+Run all four Stage A modes sequentially with:
+
+```bash
+scripts/run_stage_a.sh
+```
+
+Discrete-learning smoke experiments:
+
+```bash
+uv run ternary-train --config configs/counter_smoke.toml
+uv run ternary-train --config configs/stochastic_smoke.toml
+```
+
+The counter optimizer stores an `int8` evidence counter per parameter; the
+stochastic optimizer stores no per-parameter update state. Both constrain the
+underlying learnable tensors to scaled ternary values after every update.
+
+## RunPod
+
+The remote workflow uses a checkpointed correctness and cost gate:
+
+```bash
+# On the pod after copying the repository to /workspace:
+scripts/remote_bootstrap.sh
+scripts/remote_benchmark.sh
+
+# Start the complete Stage A matrix only after reviewing benchmark throughput:
+scripts/remote_run_stage_a.sh
+```
+
+The full runner resumes any existing per-mode checkpoint. Copy `artifacts/` back to
+the local repository before stopping or deleting a pod.
+
+The helper scripts accept the pod host, SSH port, and private-key path:
+
+```bash
+scripts/sync_to_runpod.sh HOST PORT PRIVATE_KEY
+scripts/sync_from_runpod.sh HOST PORT PRIVATE_KEY
+```
+
+## Evaluate and generate
+
+```bash
+uv run ternary-evaluate \
+  --checkpoint artifacts/smoke/checkpoint.pt \
+  --config configs/smoke.toml
+
+uv run ternary-generate \
+  --checkpoint artifacts/smoke/checkpoint.pt \
+  --tokenizer data/smoke/tokenizer.json \
+  --prompt "Once upon a time" \
+  --max-new-tokens 80
+```
+
+Use `--device cpu`, `--device mps`, or `--device cuda` to override automatic device
+selection. Checkpoints include the resolved model and training configuration.
+
+## Packed inference reference
+
+```bash
+uv run ternary-packed-benchmark \
+  --device cpu \
+  --batch 256 \
+  --in-features 1024 \
+  --out-features 1024
+```
+
+The benchmark reports packed storage (including scales) and compares the portable
+unpack-then-matmul reference with a dense ternary-weight tensor. It is a correctness
+baseline for a future fused kernel, not the fused kernel itself.
+
+On a CUDA PyTorch installation that includes Triton, benchmark the device-native
+kernel that decodes packed weights inside the reduction:
+
+```bash
+uv run ternary-triton-benchmark \
+  --rows 16384 \
+  --in-features 256 \
+  --out-features 1024
+```
+
+Export only the forward ternary codes and scales from a training checkpoint:
+
+```bash
+uv run ternary-export \
+  --checkpoint artifacts/full-stage-a/ternary_weights/checkpoint.pt \
+  --output artifacts/full-stage-a/ternary_weights/model-2bit.pt
+```
