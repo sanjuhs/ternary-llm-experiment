@@ -53,6 +53,7 @@ uv run ternary-train \
 
 for run_name in \
   hadamard-binary-p2-long \
+  hadamard-ternary-p3 \
   hadamard-ternary-p3-long \
   hadamard-late-p3-mixed \
   hadamard-nmse-p3-mixed \
