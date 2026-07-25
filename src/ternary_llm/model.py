@@ -12,6 +12,7 @@ from ternary_llm.config import Mode, ModelConfig
 from ternary_llm.projection import normalized_hadamard
 from ternary_llm.quantization import (
     code_histogram,
+    progressive_activation_codes,
     quantize_activation,
     quantize_attention,
     quantize_projected_activation,
@@ -34,6 +35,7 @@ class TernaryLinear(nn.Module):
         mode: Mode,
         weight_threshold: float,
         activation_threshold: float,
+        activation_levels: int,
         population_lanes: int,
     ) -> None:
         super().__init__()
@@ -41,13 +43,18 @@ class TernaryLinear(nn.Module):
         self.mode = mode
         self.weight_threshold = weight_threshold
         self.activation_threshold = activation_threshold
+        self.activation_levels = activation_levels
         self.population_lanes = population_lanes
         nn.init.normal_(self.weight, mean=0.0, std=0.02)
 
     def forward(self, inputs: Tensor) -> Tensor:
         if uses_quantized_activations(self.mode):
             inputs = quantize_activation(
-                inputs, self.mode, self.activation_threshold, lanes=self.population_lanes
+                inputs,
+                self.mode,
+                self.activation_threshold,
+                lanes=self.population_lanes,
+                levels=self.activation_levels,
             )
         weight = self.weight
         if uses_ternary_weights(self.mode):
@@ -63,6 +70,7 @@ class TernaryRMSNorm(nn.Module):
         mode: Mode,
         weight_threshold: float,
         activation_threshold: float,
+        activation_levels: int,
         population_lanes: int,
         eps: float = 1e-5,
     ) -> None:
@@ -71,6 +79,7 @@ class TernaryRMSNorm(nn.Module):
         self.mode = mode
         self.weight_threshold = weight_threshold
         self.activation_threshold = activation_threshold
+        self.activation_levels = activation_levels
         self.population_lanes = population_lanes
         self.eps = eps
 
@@ -82,7 +91,11 @@ class TernaryRMSNorm(nn.Module):
         output = normalized * weight
         if uses_quantized_activations(self.mode):
             output = quantize_activation(
-                output, self.mode, self.activation_threshold, lanes=self.population_lanes
+                output,
+                self.mode,
+                self.activation_threshold,
+                lanes=self.population_lanes,
+                levels=self.activation_levels,
             )
         return output
 
@@ -97,6 +110,7 @@ class CausalSelfAttention(nn.Module):
             "mode": mode,
             "weight_threshold": config.weight_threshold,
             "activation_threshold": config.activation_threshold,
+            "activation_levels": config.activation_levels,
             "population_lanes": config.population_lanes if mode == "population_ternary" else 1,
         }
         self.qkv = TernaryLinear(config.d_model, 3 * config.d_model, **linear_args)
@@ -104,6 +118,7 @@ class CausalSelfAttention(nn.Module):
         self.mode = mode
         self.weight_threshold = config.weight_threshold
         self.activation_threshold = config.activation_threshold
+        self.activation_levels = config.activation_levels
         self.population_lanes = config.population_lanes if mode == "population_ternary" else 1
         self.attention_quantization = config.attention_quantization
         self.attention_clip = config.attention_clip
@@ -178,13 +193,25 @@ class CausalSelfAttention(nn.Module):
             )
         if uses_quantized_activations(self.mode):
             q = quantize_activation(
-                q, self.mode, self.activation_threshold, lanes=self.population_lanes
+                q,
+                self.mode,
+                self.activation_threshold,
+                lanes=self.population_lanes,
+                levels=self.activation_levels,
             )
             k = quantize_activation(
-                k, self.mode, self.activation_threshold, lanes=self.population_lanes
+                k,
+                self.mode,
+                self.activation_threshold,
+                lanes=self.population_lanes,
+                levels=self.activation_levels,
             )
             v = quantize_activation(
-                v, self.mode, self.activation_threshold, lanes=self.population_lanes
+                v,
+                self.mode,
+                self.activation_threshold,
+                lanes=self.population_lanes,
+                levels=self.activation_levels,
             )
         return q, k, v, code_tensors
 
@@ -301,7 +328,11 @@ class CausalSelfAttention(nn.Module):
         output = self.projection(attended)
         if uses_quantized_activations(self.mode):
             output = quantize_activation(
-                output, self.mode, self.activation_threshold, lanes=self.population_lanes
+                output,
+                self.mode,
+                self.activation_threshold,
+                lanes=self.population_lanes,
+                levels=self.activation_levels,
             )
         return output
 
@@ -314,6 +345,7 @@ class FeedForward(nn.Module):
             "mode": mode,
             "weight_threshold": config.weight_threshold,
             "activation_threshold": config.activation_threshold,
+            "activation_levels": config.activation_levels,
             "population_lanes": config.population_lanes if mode == "population_ternary" else 1,
         }
         self.up = TernaryLinear(config.d_model, hidden_size, **linear_args)
@@ -321,19 +353,33 @@ class FeedForward(nn.Module):
         self.dropout = nn.Dropout(config.dropout)
         self.mode = mode
         self.activation_threshold = config.activation_threshold
+        self.activation_levels = config.activation_levels
         self.population_lanes = config.population_lanes if mode == "population_ternary" else 1
+        self.feed_forward_activation = config.feed_forward_activation
 
     def forward(self, inputs: Tensor) -> Tensor:
-        hidden = F.gelu(self.up(inputs), approximate="tanh")
+        hidden = self.up(inputs)
+        if self.feed_forward_activation == "relu":
+            hidden = F.relu(hidden)
+        else:
+            hidden = F.gelu(hidden, approximate="tanh")
         if uses_quantized_activations(self.mode):
             hidden = quantize_activation(
-                hidden, self.mode, self.activation_threshold, lanes=self.population_lanes
+                hidden,
+                self.mode,
+                self.activation_threshold,
+                lanes=self.population_lanes,
+                levels=self.activation_levels,
             )
         output = self.down(hidden)
         output = self.dropout(output)
         if uses_quantized_activations(self.mode):
             output = quantize_activation(
-                output, self.mode, self.activation_threshold, lanes=self.population_lanes
+                output,
+                self.mode,
+                self.activation_threshold,
+                lanes=self.population_lanes,
+                levels=self.activation_levels,
             )
         return output
 
@@ -345,6 +391,7 @@ class TransformerBlock(nn.Module):
             "mode": mode,
             "weight_threshold": config.weight_threshold,
             "activation_threshold": config.activation_threshold,
+            "activation_levels": config.activation_levels,
             "population_lanes": config.population_lanes if mode == "population_ternary" else 1,
         }
         self.attention_norm = TernaryRMSNorm(config.d_model, **norm_args)
@@ -353,6 +400,7 @@ class TransformerBlock(nn.Module):
         self.feed_forward = FeedForward(config, mode)
         self.mode = mode
         self.activation_threshold = config.activation_threshold
+        self.activation_levels = config.activation_levels
         self.population_lanes = config.population_lanes if mode == "population_ternary" else 1
         self.residual_scale = config.residual_scale
         projection = normalized_hadamard(config.d_model)
@@ -362,6 +410,9 @@ class TransformerBlock(nn.Module):
             torch.tensor(not requires_coat_calibration(mode)),
             persistent=True,
         )
+        self.last_residual_stats: dict[str, float] = {}
+        self.capture_distillation = False
+        self.last_hidden: Tensor | None = None
 
     def set_activation_projection(self, projection: Tensor) -> None:
         expected = (self.activation_projection.shape[0],) * 2
@@ -376,15 +427,41 @@ class TransformerBlock(nn.Module):
         if requires_coat_calibration(self.mode) and not bool(self.coat_projection_ready):
             raise RuntimeError("COAT mode requires a calibrated activation projection")
         if uses_activation_projection(self.mode):
+            if self.mode == "coat_progressive" and not self.training:
+                q = self.activation_projection.to(
+                    device=tensor.device,
+                    dtype=tensor.dtype,
+                )
+                codes, _ = progressive_activation_codes(
+                    tensor @ q,
+                    self.activation_levels,
+                    threshold=self.activation_threshold,
+                )
+                qmax = (self.activation_levels - 1) // 2
+                self.last_residual_stats = {
+                    "configured_levels": float(self.activation_levels),
+                    "used_levels": float(codes.unique().numel()),
+                    "zero_fraction": float(
+                        (codes == 0).to(torch.float32).mean().item()
+                    ),
+                    "saturation_fraction": float(
+                        (codes.abs() == qmax).to(torch.float32).mean().item()
+                    ),
+                }
             return quantize_projected_activation(
                 tensor,
                 self.mode,
                 self.activation_threshold,
                 self.activation_projection,
                 lanes=self.population_lanes,
+                levels=self.activation_levels,
             )
         return quantize_activation(
-            tensor, self.mode, self.activation_threshold, lanes=self.population_lanes
+            tensor,
+            self.mode,
+            self.activation_threshold,
+            lanes=self.population_lanes,
+            levels=self.activation_levels,
         )
 
     def forward(self, inputs: Tensor) -> Tensor:
@@ -396,6 +473,8 @@ class TransformerBlock(nn.Module):
         )
         if uses_quantized_activations(self.mode):
             hidden = self._quantize_residual(hidden)
+        if self.capture_distillation:
+            self.last_hidden = hidden
         return hidden
 
 
@@ -414,6 +493,7 @@ class TernaryGPT(nn.Module):
             mode=mode,
             weight_threshold=config.weight_threshold,
             activation_threshold=config.activation_threshold,
+            activation_levels=config.activation_levels,
             population_lanes=(
                 config.population_lanes if mode == "population_ternary" else 1
             ),
@@ -434,6 +514,7 @@ class TernaryGPT(nn.Module):
     def set_capture_distillation(self, enabled: bool) -> None:
         for block in self.blocks:
             block.attention.capture_distillation = enabled
+            block.capture_distillation = enabled
 
     @staticmethod
     def _initialize(module: nn.Module) -> None:
@@ -474,6 +555,7 @@ class TernaryGPT(nn.Module):
                 lanes=(
                     self.config.population_lanes if self.mode == "population_ternary" else 1
                 ),
+                levels=self.config.activation_levels,
             )
 
         for block in self.blocks:
@@ -490,6 +572,7 @@ class TernaryGPT(nn.Module):
                 lanes=(
                     self.config.population_lanes if self.mode == "population_ternary" else 1
                 ),
+                levels=self.config.activation_levels,
             )
         logits = F.linear(hidden, self._embedding_weight())
         loss = None
@@ -566,6 +649,21 @@ class TernaryGPT(nn.Module):
             "layers": per_layer,
         }
 
+    def residual_stats(self) -> dict[str, Any]:
+        per_layer = [
+            {"layer": index, **block.last_residual_stats}
+            for index, block in enumerate(self.blocks)
+            if block.last_residual_stats
+        ]
+        aggregate: dict[str, float] = {}
+        if per_layer:
+            keys = set.intersection(*(set(layer) for layer in per_layer)) - {"layer"}
+            aggregate = {
+                key: sum(float(layer[key]) for layer in per_layer) / len(per_layer)
+                for key in sorted(keys)
+            }
+        return {"aggregate": aggregate, "layers": per_layer}
+
     def description(self) -> dict[str, Any]:
         return {
             "mode": self.mode,
@@ -579,5 +677,10 @@ class TernaryGPT(nn.Module):
                 "qkv_quantization": self.config.qkv_quantization,
                 "rectification": self.config.attention_rectification,
                 "gate": self.config.attention_gate,
+            },
+            "residual": {
+                "levels": self.config.activation_levels
+                if self.mode == "coat_progressive"
+                else None,
             },
         }

@@ -11,6 +11,7 @@ from ternary_llm.config import (
     VALID_ATTENTION_GATES,
     VALID_ATTENTION_QUANTIZATIONS,
     VALID_ATTENTION_RECTIFICATIONS,
+    VALID_FEED_FORWARD_ACTIVATIONS,
     VALID_MODES,
     VALID_QKV_QUANTIZATIONS,
     ModelConfig,
@@ -45,6 +46,11 @@ def main() -> None:
     )
     parser.add_argument("--attention-gate", choices=VALID_ATTENTION_GATES)
     parser.add_argument("--attention-gate-initial", type=float)
+    parser.add_argument("--activation-levels", type=int)
+    parser.add_argument(
+        "--feed-forward-activation",
+        choices=VALID_FEED_FORWARD_ACTIVATIONS,
+    )
     args = parser.parse_args()
 
     file_config = load_config(args.config)
@@ -67,6 +73,10 @@ def main() -> None:
         model_overrides["attention_gate"] = args.attention_gate
     if args.attention_gate_initial is not None:
         model_overrides["attention_gate_initial"] = args.attention_gate_initial
+    if args.activation_levels is not None:
+        model_overrides["activation_levels"] = args.activation_levels
+    if args.feed_forward_activation:
+        model_overrides["feed_forward_activation"] = args.feed_forward_activation
     if model_overrides:
         model_config = replace(model_config, **model_overrides)
     evaluation_mode = args.mode or stored["mode"]
@@ -98,6 +108,7 @@ def main() -> None:
         **metrics,
         "weight_codes": model.quantization_stats(),
         "attention": model.attention_stats(),
+        "residual": model.residual_stats(),
     }
     print(json.dumps(result, indent=2))
 

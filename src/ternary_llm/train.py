@@ -19,6 +19,7 @@ from ternary_llm.config import (
     VALID_ATTENTION_GATES,
     VALID_ATTENTION_QUANTIZATIONS,
     VALID_ATTENTION_RECTIFICATIONS,
+    VALID_FEED_FORWARD_ACTIVATIONS,
     VALID_MODES,
     VALID_QKV_QUANTIZATIONS,
     ExperimentConfig,
@@ -119,6 +120,7 @@ def _distillation_enabled(config: ExperimentConfig) -> bool:
             config.train.logit_distillation_weight,
             config.train.attention_distillation_weight,
             config.train.qk_distillation_weight,
+            config.train.hidden_distillation_weight,
         )
     )
 
@@ -150,6 +152,7 @@ def distillation_loss(
 
     attention_losses = []
     qk_losses = []
+    hidden_losses = []
     for student_block, teacher_block in zip(
         student.blocks,
         teacher.blocks,
@@ -193,6 +196,16 @@ def distillation_loss(
                     ),
                 )
             )
+        if config.train.hidden_distillation_weight > 0:
+            if student_block.last_hidden is None or teacher_block.last_hidden is None:
+                raise AssertionError("block outputs were not captured")
+            hidden_shape = (student_block.last_hidden.shape[-1],)
+            hidden_losses.append(
+                F.mse_loss(
+                    F.layer_norm(student_block.last_hidden, hidden_shape),
+                    F.layer_norm(teacher_block.last_hidden, hidden_shape),
+                )
+            )
 
     if attention_losses:
         attention_loss = torch.stack(attention_losses).mean()
@@ -204,6 +217,10 @@ def distillation_loss(
         qk_loss = torch.stack(qk_losses).mean()
         total = total + config.train.qk_distillation_weight * qk_loss
         metrics["qk_distillation_loss"] = float(qk_loss.detach().item())
+    if hidden_losses:
+        hidden_loss = torch.stack(hidden_losses).mean()
+        total = total + config.train.hidden_distillation_weight * hidden_loss
+        metrics["hidden_distillation_loss"] = float(hidden_loss.detach().item())
     return total, metrics
 
 
@@ -398,6 +415,7 @@ def train(
                 **validation,
                 "weight_codes": model.quantization_stats(),
                 "attention": model.attention_stats(),
+                "residual": model.residual_stats(),
             }
             append_metric(metrics_path, metric)
             print(json.dumps(metric))
@@ -432,6 +450,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-steps", type=int)
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--population-lanes", type=int)
+    parser.add_argument("--activation-levels", type=int)
     parser.add_argument("--residual-scale", type=float)
     parser.add_argument(
         "--attention-quantization",
@@ -446,6 +465,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--attention-gate", choices=VALID_ATTENTION_GATES)
     parser.add_argument("--attention-gate-initial", type=float)
+    parser.add_argument(
+        "--feed-forward-activation",
+        choices=VALID_FEED_FORWARD_ACTIVATIONS,
+    )
     parser.add_argument("--eval-batches", type=int)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--run-name")
@@ -464,6 +487,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--logit-distillation-weight", type=float)
     parser.add_argument("--attention-distillation-weight", type=float)
     parser.add_argument("--qk-distillation-weight", type=float)
+    parser.add_argument("--hidden-distillation-weight", type=float)
     parser.add_argument("--distillation-temperature", type=float)
     parser.add_argument("--distillation-token-stride", type=int)
     return parser
@@ -503,6 +527,8 @@ def main() -> None:
         )
     if args.qk_distillation_weight is not None:
         train_overrides["qk_distillation_weight"] = args.qk_distillation_weight
+    if args.hidden_distillation_weight is not None:
+        train_overrides["hidden_distillation_weight"] = args.hidden_distillation_weight
     if args.distillation_temperature is not None:
         train_overrides["distillation_temperature"] = args.distillation_temperature
     if args.distillation_token_stride is not None:
@@ -511,6 +537,11 @@ def main() -> None:
         config = replace(
             config,
             model=replace(config.model, population_lanes=args.population_lanes),
+        )
+    if args.activation_levels is not None:
+        config = replace(
+            config,
+            model=replace(config.model, activation_levels=args.activation_levels),
         )
     if args.residual_scale:
         config = replace(
@@ -532,6 +563,8 @@ def main() -> None:
         model_overrides["attention_gate"] = args.attention_gate
     if args.attention_gate_initial is not None:
         model_overrides["attention_gate_initial"] = args.attention_gate_initial
+    if args.feed_forward_activation:
+        model_overrides["feed_forward_activation"] = args.feed_forward_activation
     if model_overrides:
         config = replace(config, model=replace(config.model, **model_overrides))
     if train_overrides:

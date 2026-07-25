@@ -193,6 +193,7 @@ def test_attention_and_qk_distillation_compute_student_gradients() -> None:
             logit_distillation_weight=0.1,
             attention_distillation_weight=0.2,
             qk_distillation_weight=0.3,
+            hidden_distillation_weight=0.4,
             distillation_token_stride=2,
         ),
     )
@@ -210,5 +211,6 @@ def test_attention_and_qk_distillation_compute_student_gradients() -> None:
         "logit_distillation_loss",
         "attention_distillation_loss",
         "qk_distillation_loss",
+        "hidden_distillation_loss",
     }
     assert student.blocks[0].attention.q_gamma.grad is not None

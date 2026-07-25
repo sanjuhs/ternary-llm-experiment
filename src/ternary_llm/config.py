@@ -35,6 +35,9 @@ VALID_ATTENTION_RECTIFICATIONS: tuple[AttentionRectification, ...] = ("none", "q
 AttentionGate = Literal["none", "sigmoid", "binary"]
 VALID_ATTENTION_GATES: tuple[AttentionGate, ...] = ("none", "sigmoid", "binary")
 
+FeedForwardActivation = Literal["gelu", "relu"]
+VALID_FEED_FORWARD_ACTIVATIONS: tuple[FeedForwardActivation, ...] = ("gelu", "relu")
+
 Mode = Literal[
     "float",
     "ternary_weights",
@@ -45,6 +48,7 @@ Mode = Literal[
     "coat_a4",
     "hadamard_ternary",
     "coat_ternary",
+    "coat_progressive",
 ]
 VALID_MODES: tuple[Mode, ...] = (
     "float",
@@ -56,6 +60,7 @@ VALID_MODES: tuple[Mode, ...] = (
     "coat_a4",
     "hadamard_ternary",
     "coat_ternary",
+    "coat_progressive",
 )
 
 
@@ -69,6 +74,7 @@ class ModelConfig:
     ff_multiplier: int = 4
     dropout: float = 0.0
     activation_threshold: float = 0.5
+    activation_levels: int = 19
     weight_threshold: float = 0.5
     population_lanes: int = 1
     residual_scale: float = 1.0
@@ -79,6 +85,7 @@ class ModelConfig:
     attention_rectification: AttentionRectification = "none"
     attention_gate: AttentionGate = "none"
     attention_gate_initial: float = 0.9
+    feed_forward_activation: FeedForwardActivation = "gelu"
 
     def validate(self) -> None:
         if self.vocab_size <= 4:
@@ -95,6 +102,8 @@ class ModelConfig:
             raise ValueError("dropout must be in [0, 1)")
         if self.activation_threshold <= 0 or self.weight_threshold <= 0:
             raise ValueError("ternary thresholds must be positive")
+        if self.activation_levels < 3 or self.activation_levels % 2 == 0:
+            raise ValueError("activation_levels must be an odd integer of at least 3")
         if self.population_lanes < 1:
             raise ValueError("population_lanes must be positive")
         if self.residual_scale <= 0:
@@ -126,6 +135,12 @@ class ModelConfig:
             )
         if not 0.0 < self.attention_gate_initial < 1.0:
             raise ValueError("attention_gate_initial must be in (0, 1)")
+        if self.feed_forward_activation not in VALID_FEED_FORWARD_ACTIVATIONS:
+            raise ValueError(
+                "feed_forward_activation must be one of "
+                f"{VALID_FEED_FORWARD_ACTIVATIONS}, "
+                f"got {self.feed_forward_activation!r}"
+            )
 
 
 @dataclass(frozen=True)
@@ -156,6 +171,7 @@ class TrainConfig:
     logit_distillation_weight: float = 0.0
     attention_distillation_weight: float = 0.0
     qk_distillation_weight: float = 0.0
+    hidden_distillation_weight: float = 0.0
     distillation_temperature: float = 1.0
     distillation_token_stride: int = 4
 
@@ -193,6 +209,7 @@ class TrainConfig:
             self.logit_distillation_weight,
             self.attention_distillation_weight,
             self.qk_distillation_weight,
+            self.hidden_distillation_weight,
         )
         if any(weight < 0 for weight in distillation_weights):
             raise ValueError("distillation weights must be non-negative")

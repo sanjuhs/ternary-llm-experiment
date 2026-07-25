@@ -17,6 +17,7 @@ def uses_ternary_weights(mode: Mode) -> bool:
         "coat_a4",
         "hadamard_ternary",
         "coat_ternary",
+        "coat_progressive",
     }
 
 
@@ -27,6 +28,7 @@ def uses_ternary_activations(mode: Mode) -> bool:
         "population_ternary",
         "hadamard_ternary",
         "coat_ternary",
+        "coat_progressive",
     }
 
 
@@ -44,11 +46,12 @@ def uses_activation_projection(mode: Mode) -> bool:
         "coat_a4",
         "hadamard_ternary",
         "coat_ternary",
+        "coat_progressive",
     }
 
 
 def requires_coat_calibration(mode: Mode) -> bool:
-    return mode in {"coat_a4", "coat_ternary"}
+    return mode in {"coat_a4", "coat_ternary", "coat_progressive"}
 
 
 def _scale(
@@ -119,6 +122,55 @@ def ternarize_activation(
     codes, scale = population_ternary_codes(tensor, lanes=lanes, threshold=threshold)
     dequantized = codes.mean(dim=-1) * scale
     return tensor + (dequantized - tensor).detach()
+
+
+def quantize_activation_levels(
+    tensor: Tensor,
+    levels: int,
+    *,
+    threshold: float = 0.5,
+    eps: float = 1e-5,
+) -> Tensor:
+    """Quantize per vector to a symmetric odd alphabet with magnitude alignment.
+
+    The integer code alphabet is ``[-qmax, ..., 0, ..., qmax]``. Codes are
+    selected relative to the vector's mean absolute magnitude, then the
+    dequantization scale is aligned so the quantized vector preserves the
+    original mean absolute magnitude. At three levels the codes are exactly
+    ternary. The forward path is quantized and the backward path is an STE.
+    """
+    if levels < 3 or levels % 2 == 0:
+        raise ValueError("levels must be an odd integer of at least 3")
+    codes, aligned_scale = progressive_activation_codes(
+        tensor,
+        levels,
+        threshold=threshold,
+        eps=eps,
+    )
+    dequantized = codes * aligned_scale
+    return tensor + (dequantized - tensor).detach()
+
+
+def progressive_activation_codes(
+    tensor: Tensor,
+    levels: int,
+    *,
+    threshold: float = 0.5,
+    eps: float = 1e-5,
+) -> tuple[Tensor, Tensor]:
+    """Return integer codes and a magnitude-aligned per-vector scale."""
+    if levels < 3 or levels % 2 == 0:
+        raise ValueError("levels must be an odd integer of at least 3")
+    qmax = (levels - 1) // 2
+    magnitude = _scale(tensor, -1, eps=eps)
+    normalized = tensor.detach() / magnitude
+    if levels == 3:
+        codes = ternary_code(normalized, threshold)
+    else:
+        codes = normalized.round().clamp(-qmax, qmax)
+    code_magnitude = codes.abs().mean(dim=-1, keepdim=True)
+    aligned_scale = magnitude / code_magnitude.clamp_min(eps)
+    return codes, aligned_scale
 
 
 def ternary_activation_codes(
@@ -276,7 +328,16 @@ def quantize_attention(
     return probabilities, score_codes, probability_codes
 
 
-def quantize_activation(tensor: Tensor, mode: Mode, threshold: float, *, lanes: int) -> Tensor:
+def quantize_activation(
+    tensor: Tensor,
+    mode: Mode,
+    threshold: float,
+    *,
+    lanes: int,
+    levels: int = 19,
+) -> Tensor:
+    if mode == "coat_progressive":
+        return quantize_activation_levels(tensor, levels, threshold=threshold)
     if uses_a4_activations(mode):
         return quantize_activation_a4(tensor)
     if uses_ternary_activations(mode):
@@ -291,13 +352,20 @@ def quantize_projected_activation(
     projection: Tensor,
     *,
     lanes: int,
+    levels: int = 19,
 ) -> Tensor:
     """Encode in an orthogonal basis, then decode for the reference kernels."""
     if not uses_activation_projection(mode):
-        return quantize_activation(tensor, mode, threshold, lanes=lanes)
+        return quantize_activation(tensor, mode, threshold, lanes=lanes, levels=levels)
     q = projection.to(device=tensor.device, dtype=tensor.dtype)
     rotated = tensor @ q
-    quantized = quantize_activation(rotated, mode, threshold, lanes=lanes)
+    quantized = quantize_activation(
+        rotated,
+        mode,
+        threshold,
+        lanes=lanes,
+        levels=levels,
+    )
     return quantized @ q.T
 
 

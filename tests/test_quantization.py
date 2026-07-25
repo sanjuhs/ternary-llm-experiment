@@ -3,7 +3,9 @@ import torch
 from ternary_llm.quantization import (
     integer_softmax_from_int2_codes,
     population_ternary_codes,
+    progressive_activation_codes,
     quantize_activation_a4,
+    quantize_activation_levels,
     quantize_attention_probabilities_binary,
     quantize_attention_probabilities_int2,
     quantize_attention_scores_int2,
@@ -47,6 +49,31 @@ def test_a4_activation_uses_straight_through_gradient() -> None:
     values = torch.tensor([[0.1, -0.2, 0.7]], requires_grad=True)
     quantize_activation_a4(values).sum().backward()
     assert torch.equal(values.grad, torch.ones_like(values))
+
+
+def test_progressive_activation_uses_requested_alphabet_and_alignment() -> None:
+    values = torch.tensor([[-3.0, -1.1, -0.2, 0.0, 0.4, 1.2, 3.5]], requires_grad=True)
+    quantized = quantize_activation_levels(values, 7)
+    input_magnitude = values.detach().abs().mean(dim=-1)
+    output_magnitude = quantized.detach().abs().mean(dim=-1)
+
+    assert torch.allclose(output_magnitude, input_magnitude, atol=1e-6)
+    quantized.sum().backward()
+    assert torch.equal(values.grad, torch.ones_like(values))
+
+
+def test_progressive_three_level_endpoint_has_ternary_codes() -> None:
+    values = torch.tensor([[-2.0, -0.6, -0.1, 0.0, 0.1, 0.6, 2.0]])
+    magnitude = values.abs().mean(dim=-1, keepdim=True)
+    quantized = quantize_activation_levels(values, 3)
+    nonzero = quantized[quantized != 0]
+
+    assert quantized[0, 3].item() == 0.0
+    assert nonzero.abs().unique().numel() == 1
+    assert torch.allclose(quantized.abs().mean(dim=-1), magnitude.squeeze(-1))
+
+    codes, _ = progressive_activation_codes(values, 3)
+    assert set(codes.unique().tolist()) <= {-1.0, 0.0, 1.0}
 
 
 def test_int2_attention_scores_use_four_codes_and_preserve_mask() -> None:
