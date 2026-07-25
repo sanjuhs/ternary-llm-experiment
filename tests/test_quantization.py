@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from ternary_llm.quantization import (
@@ -10,6 +11,7 @@ from ternary_llm.quantization import (
     quantize_attention_probabilities_binary,
     quantize_attention_probabilities_int2,
     quantize_attention_scores_int2,
+    residual_plane_ternary_linear_reference,
     residual_refinement_activation_codes,
     ternarize,
     ternarize_activation,
@@ -120,6 +122,35 @@ def test_ternary_residual_refinement_uses_sparse_planes_and_ste() -> None:
     assert 0.0 in codes.unique().tolist()
     quantized.sum().backward()
     assert torch.equal(values.grad, torch.ones_like(values))
+
+
+@pytest.mark.parametrize("binary", [True, False])
+def test_residual_plane_linear_matches_reconstructed_reference(binary: bool) -> None:
+    torch.manual_seed(7)
+    inputs = torch.randn(2, 3, 8)
+    weight = torch.randn(5, 8)
+    planes = 2
+    activation_codes, activation_scales = residual_refinement_activation_codes(
+        inputs,
+        planes,
+        binary=binary,
+    )
+    weight_scale = weight.detach().abs().mean(dim=1, keepdim=True).clamp_min(1e-5)
+    weight_codes = ternary_code(weight.detach() / weight_scale)
+    reconstructed_inputs = (activation_codes * activation_scales).sum(dim=-1)
+    reconstructed_weight = weight_codes * weight_scale
+
+    output, accumulators = residual_plane_ternary_linear_reference(
+        inputs,
+        weight,
+        planes=planes,
+        binary=binary,
+    )
+    expected = torch.nn.functional.linear(reconstructed_inputs, reconstructed_weight)
+
+    assert accumulators.dtype == torch.int32
+    assert accumulators.shape == (2, 3, 5, planes)
+    assert torch.allclose(output, expected, atol=1e-5, rtol=1e-5)
 
 
 def test_int2_attention_scores_use_four_codes_and_preserve_mask() -> None:

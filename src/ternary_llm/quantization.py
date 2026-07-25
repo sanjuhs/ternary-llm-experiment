@@ -214,6 +214,69 @@ def quantize_activation_residual_planes(
     return tensor + (dequantized - tensor).detach()
 
 
+def residual_plane_ternary_linear_reference(
+    inputs: Tensor,
+    weight: Tensor,
+    *,
+    planes: int,
+    binary: bool,
+    activation_threshold: float = 0.5,
+    weight_threshold: float = 0.5,
+    eps: float = 1e-5,
+) -> tuple[Tensor, Tensor]:
+    """Apply a linear layer as code-plane dot products with INT32 accumulators.
+
+    This is a deliberately simple deployment reference, not an optimized
+    kernel. It keeps the large matrix-multiplication operands as binary/ternary
+    codes. Per-vector activation scales and per-row weight scales are applied
+    only after the exact integer dot products have been accumulated.
+    """
+    if inputs.ndim < 2:
+        raise ValueError("inputs must have at least two dimensions")
+    if weight.ndim != 2:
+        raise ValueError("weight must be a matrix")
+    if inputs.shape[-1] != weight.shape[-1]:
+        raise ValueError(
+            "input and weight reduction dimensions must match: "
+            f"{inputs.shape[-1]} != {weight.shape[-1]}"
+        )
+
+    activation_codes, activation_scales = residual_refinement_activation_codes(
+        inputs,
+        planes,
+        binary=binary,
+        threshold=activation_threshold,
+        eps=eps,
+    )
+    weight_scale = _scale(weight, 1, eps=eps)
+    weight_codes = ternary_code(
+        weight.detach() / weight_scale,
+        weight_threshold,
+    )
+
+    reduction = inputs.shape[-1]
+    output_features = weight.shape[0]
+    flattened_codes = activation_codes.reshape(-1, reduction, planes)
+    plane_major_codes = flattened_codes.permute(0, 2, 1).reshape(-1, reduction)
+    integer_accumulators = (
+        plane_major_codes.to(torch.int32) @ weight_codes.T.to(torch.int32)
+    )
+    integer_accumulators = integer_accumulators.reshape(
+        -1,
+        planes,
+        output_features,
+    ).permute(0, 2, 1)
+
+    flattened_scales = activation_scales.reshape(-1, 1, planes)
+    output = (
+        integer_accumulators.to(inputs.dtype) * flattened_scales
+    ).sum(dim=-1)
+    output = output * weight_scale.reshape(1, output_features).to(inputs.dtype)
+    output = output.reshape(*inputs.shape[:-1], output_features)
+    accumulator_shape = (*inputs.shape[:-1], output_features, planes)
+    return output, integer_accumulators.reshape(accumulator_shape)
+
+
 def progressive_activation_codes(
     tensor: Tensor,
     levels: int,
