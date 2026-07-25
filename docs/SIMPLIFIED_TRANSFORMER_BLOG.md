@@ -247,12 +247,12 @@ model's notebook. Three symbols are enough to record a direction, but apparently
 not enough for this ordinary Transformer to preserve all the details it needs
 across six layers.
 
-The next experiment will give each number two or three tiny ternary “planes.”
-Each plane still contains only minus, zero, or plus, so a future chip can keep
-using cheap ternary operations. Combining the planes gives the notebook five or
-seven possible levels. It costs more than one ternary code per number, but it is
-the cleanest way to test whether residual capacity—not the basic ternary
-arithmetic—is the missing ingredient.
+The next experiment gave each number two or three tiny ternary “planes.” Each
+plane still contains only minus, zero, or plus, so a future chip can keep using
+cheap ternary operations. Separately scaled planes give the notebook many more
+possible combinations. They cost more than one ternary code per number, but
+they cleanly test whether residual capacity—not the basic ternary arithmetic—is
+the missing ingredient.
 
 The exact result inventory and arithmetic contract are in the
 [experiment ledger](EXPERIMENT_LEDGER_AND_ROADMAP.md). The raw story outputs are
@@ -298,3 +298,33 @@ That gives us two sensible products rather than one vague promise:
 We will continue to report both, including the cost of scales and wider
 temporary sums. Calling the second model “1.58-bit” would be misleading even
 though its actual multiplications are ternary.
+
+## What happened when we tried the cards?
+
+We ran the comparison. Every model kept ternary weights, ternary Q/K/V, and the
+low-bit attention route. We changed only the number of cards used to carry the
+information between Transformer blocks.
+
+| Residual representation | Physical code bits per number | Loss |
+|---|---:|---:|
+| Two binary cards | **2** | 4.3323 |
+| Two ternary cards | 4 | 3.2882 |
+| Three ternary cards | 6 | **2.6613** |
+| Earlier four-bit activation control | 4 | 2.1126 |
+
+Lower loss is better. The exact-two-bit model works, but it still forgets too
+much. Giving each number an explicit zero choice makes a large improvement, and
+adding a third ternary card improves it again. The three-card model is far
+better than our old single-card result of 5.0989, but it still does not match
+the four-bit control.
+
+We also compared a learned COAT rotation with a fixed Hadamard rotation. After
+equal training, the fixed transform was a little better in every row. That is
+good news for hardware: Hadamard mixing is just a known pattern of additions
+and subtractions, so the model does not need a dense floating-point rotation.
+
+The lesson is simple. Rotation helps organize the notebook, but the number of
+symbols available in the notebook matters more. The next runs are testing
+whether longer training, spending extra cards only in sensitive layers, and a
+larger 27.4-million-parameter model can close the remaining gap without hiding
+the storage cost.
