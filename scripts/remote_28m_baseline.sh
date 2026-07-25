@@ -23,6 +23,18 @@ uv run ternary-train \
   --init-from \
     artifacts/residual-refinement-pilot/hadamard-ternary-p3-long/checkpoint.pt \
   --teacher-checkpoint artifacts/attention-pilot/prob-int2/checkpoint.pt \
+  --run-name hadamard-nmse-p3-mixed \
+  --activation-encoding residual_ternary \
+  --activation-planes 2 \
+  --activation-planes-by-layer 3 2 3 2 2 3 \
+  --max-steps 2500
+
+uv run ternary-train \
+  --config configs/residual_refinement_pilot.toml \
+  --mode hadamard_progressive \
+  --init-from \
+    artifacts/residual-refinement-pilot/hadamard-ternary-p3-long/checkpoint.pt \
+  --teacher-checkpoint artifacts/attention-pilot/prob-int2/checkpoint.pt \
   --run-name hadamard-ternary-p3-relu-harden \
   --activation-encoding residual_ternary \
   --activation-planes 3 \
@@ -33,6 +45,7 @@ for run_name in \
   hadamard-binary-p2-long \
   hadamard-ternary-p3-long \
   hadamard-late-p3-mixed \
+  hadamard-nmse-p3-mixed \
   hadamard-ternary-p3-relu-harden
 do
   run_dir="artifacts/residual-refinement-pilot/${run_name}"
