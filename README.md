@@ -2,6 +2,9 @@
 
 For the complete result inventory and the next ternary-QKV architecture, see
 [the experiment ledger and roadmap](docs/EXPERIMENT_LEDGER_AND_ROADMAP.md).
+For the published 28M/30M TinyStories claims and our tokenizer-neutral matched
+evaluation, see the
+[TinyStories baseline audit](docs/TINYSTORIES_BASELINE_AUDIT.md).
 
 This repository tests whether a small GPT-style language model can learn TinyStories
 while its learned weights and persistent forward activations use ternary codes
@@ -39,8 +42,12 @@ The strict residual-curriculum outputs are preserved in
 - a BWTA-inspired progressive residual alphabet with magnitude alignment,
   per-layer code-use diagnostics, hidden-state distillation, and an exact
   three-code endpoint;
+- exact two-bit binary residual refinement, multi-plane ternary residuals,
+  fixed-Hadamard mixing, and layer-specific plane allocation;
 - teacher/student logit, attention-map, and sampled Q-Q/K-K relation
   distillation;
+- an exact reference linear path with binary/ternary code operands and INT32
+  accumulators;
 - straight-through ternary fake quantization with per-row weight and per-token
   activation scales;
 - training, validation, checkpoint/resume, and text generation;
@@ -59,6 +66,8 @@ not claim a speedup without a fused device kernel.
   artifacts](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/gated-attention-pilot)
 - [Progressive fully ternary residual pilot
   artifacts](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/fully-ternary-pilot)
+- [Residual-plane refinement
+  artifacts](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/residual-refinement-pilot)
 - [Complete tokenized TinyStories
   stream](https://huggingface.co/datasets/sanjuhs/ternary-tinystories-4096)
 
