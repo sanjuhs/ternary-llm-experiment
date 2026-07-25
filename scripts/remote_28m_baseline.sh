@@ -128,6 +128,10 @@ uv run ternary-train \
 ternary_checkpoint="${output}/ternary-weights-one-pass/checkpoint.pt"
 projection="${output}/ternary-weights-projection.pt"
 record_checkpoint ternary-weights-one-pass
+uv run ternary-export \
+  --checkpoint "${ternary_checkpoint}" \
+  --output "${output}/ternary-weights-one-pass/model-2bit.pt" \
+  > "${output}/ternary-weights-one-pass/packed-export.json"
 
 uv run ternary-calibrate-projection \
   --checkpoint "${ternary_checkpoint}" \
