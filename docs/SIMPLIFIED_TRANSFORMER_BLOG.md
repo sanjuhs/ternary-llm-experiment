@@ -179,14 +179,14 @@ attention looks experimentally reachable. Uniformly ternary activations across
 every layer remain the open part—and the training transition, more than the
 threshold alone, is likely to decide whether it works.
 
-## The experiment now running
+## The latest experiment
 
 We have separated Q/K/V precision from residual precision. This matters because
 the earlier COAT A4 model quietly inherited four-bit Q, K, and V. The new pilot
 forces all three to ternary while keeping the residual stream at four bits long
 enough to isolate the attention problem.
 
-The combined student uses:
+The combined student tested:
 
 - Q-ViT-style learned reshaping to make ternary Q and K codes more informative;
 - ternary Q·K with a wider integer sum;
@@ -196,11 +196,29 @@ The combined student uses:
 - a learned binary per-head gate that can zero an update cleanly;
 - teacher matching on output logits, attention maps, and Q-Q/K-K relationships.
 
-The first post-training switch was intentionally bad: forced ternary Q/K/V raised
-loss from the 2.14 range to 3.60 on ten batches, and untrained Q-ViT rectification
-raised it further. That is useful evidence. It says the next question is whether
-the model can *learn* this representation through QAT and distillation—not whether
-we can flip a ternary switch after training.
+The first post-training switch was intentionally bad: forced ternary Q/K/V
+raised loss from the 2.14 range to 3.61, and untrained Q-ViT rectification raised
+it further. Training recovered most of that damage:
 
-The exact result inventory, arithmetic contract, and gated rollout are in the
-[experiment ledger](EXPERIMENT_LEDGER_AND_ROADMAP.md).
+| Model after equal-budget training | Loss | Plain-language result |
+|---|---:|---|
+| Matched A4-QKV control | 2.1391 | Best quality in this pilot |
+| Ternary Q/K/V | **2.2898** | Best ternary-attention quality |
+| Ternary Q/K/V + integer softmax route | **2.2999** | Almost the same as plain ternary Q/K/V |
+| Q-ViT rectification + hard gate | 2.5619 | Worse; every gate stayed open |
+
+In simple terms, forcing the three attention operands to ternary now works well
+enough to generate recognizable stories. Replacing the score-to-probability path
+with two-bit codes and a four-entry integer lookup adds only about 0.01 loss.
+However, the strict model is still about 0.16 loss behind the matched control,
+so it is promising rather than equivalent.
+
+The next experiment will repeat the two winning arms across seeds, learn a
+three-level or logarithmic route codebook, and gradually reduce the residual
+stream. We will also train soft gates with a sparsity target before hardening
+them for inference; the first hard-gate experiment never learned to close.
+
+The exact result inventory and arithmetic contract are in the
+[experiment ledger](EXPERIMENT_LEDGER_AND_ROADMAP.md). The raw story outputs are
+in the
+[generation appendix](GATED_ATTENTION_GENERATION_SAMPLES.md).

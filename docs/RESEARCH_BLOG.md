@@ -510,6 +510,40 @@ The experiment is specified in
 [`configs/gated_attention_pilot.toml`](../configs/gated_attention_pilot.toml) and
 [`scripts/remote_gated_attention_pilot.sh`](../scripts/remote_gated_attention_pilot.sh).
 
+### What QAT recovered
+
+The completed 750-step RunPod pilot changed the conclusion materially:
+
+| Equal-budget arm | Validation loss | Perplexity |
+|---|---:|---:|
+| Ternary Q/K/V | **2.289840** | **9.8734** |
+| Q-ViT rectification + binary gate | 2.561854 | 12.9598 |
+| Rectification + gate + structured distillation | 2.500275 | 12.1858 |
+| Integer score LUT, no rectification | 2.301631 | 9.9905 |
+| Integer score LUT + distillation, no rectification | **2.299876** | **9.9729** |
+
+The result supports three narrower claims:
+
+1. Ternary Q, K, and V are trainable in this model. The best arm passed the
+   predeclared 2.50 loss gate and recovered most of the catastrophic PTQ drop.
+2. A two-bit score, four-entry Q15 exponential lookup, integer denominator, and
+   low-bit route add only 0.010036 loss beyond plain ternary Q/K/V in this run.
+3. Abrupt Q-ViT rectification is not automatically beneficial. Its hard gates
+   remained 100% open, while distillation recovered only part of its loss.
+
+The matched A4-QKV/2-bit-probability control still scores 2.139060, leaving the
+best strict arm 0.160816 behind. Therefore “ternary attention can generate” is
+now supported; “same loss” is not. Repeated seeds and a longer corpus run are
+the next quality test.
+
+The strict route's nominal four-level codebook used only codes 0, 1, and 3; code
+2 was never selected. That points toward a learned three-level or logarithmic
+route rather than an assumption that four uniformly spaced codes are ideal.
+Unedited generations are collected in
+[`GATED_ATTENTION_GENERATION_SAMPLES.md`](GATED_ATTENTION_GENERATION_SAMPLES.md),
+and the exact run inventory is in
+[`EXPERIMENT_LEDGER_AND_ROADMAP.md`](EXPERIMENT_LEDGER_AND_ROADMAP.md).
+
 ## Training plan for a strict low-bit Transformer
 
 The results now support a staged plan rather than another direct A16-to-ternary

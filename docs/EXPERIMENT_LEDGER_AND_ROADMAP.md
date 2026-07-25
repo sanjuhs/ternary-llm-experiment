@@ -19,8 +19,9 @@ validation scopes and must not be presented as a direct improvement.
 
 The best result with ternary weights and 4-bit residual activations is **2.1126**.
 The best result with a 2-bit attention representation is **2.1383**. A model with
-one ternary code at every residual boundary has not yet worked: the best such
-result is **6.3798**.
+forced ternary Q/K/V is **2.289840**; adding the strict two-bit score and
+four-entry integer-LUT route gives **2.299876**. A model with one ternary code at
+every residual boundary has not yet worked: the best such result is **6.3798**.
 
 ## What an INT32 accumulator really means
 
@@ -181,6 +182,31 @@ switched on after training. It does **not** reject QAT, distillation, or trainin
 the architecture from scratch. Q-ViT's rectification parameters are untrained in
 this screen.
 
+### Full GPU ternary-QKV result
+
+Every selected arm then received the same 750-step / 6,144,000-token QAT budget
+and was evaluated over 100 deterministic validation batches:
+
+| QAT arm | Loss | Perplexity | Gate state |
+|---|---:|---:|---|
+| Ternary Q/K/V | **2.289840** | **9.8734** | — |
+| Q-ViT rectification + binary gate | 2.561854 | 12.9598 | 100% open |
+| Rectification + gate + structured distillation | 2.500275 | 12.1858 | 100% open |
+| 2-bit score + integer LUT, no rectification | 2.301631 | 9.9905 | — |
+| Same strict route + structured distillation | **2.299876** | **9.9729** | — |
+
+Plain ternary Q/K/V passed the predeclared loss-below-2.50 screen. The strict
+integer-LUT route cost only 0.010036 additional loss relative to that model, but
+remains 0.160816 behind the matched A4-QKV/2-bit-probability control at 2.139060.
+That is a successful architecture screen, not yet “same loss.”
+
+Q-ViT-style rectification was counterproductive when introduced abruptly, and
+the binary gates never closed. Distillation recovered 0.061579 loss in that
+damaged arm, but only 0.001755 in the already stable no-rectification arm.
+Fixed-prompt generations remain recognizably story-like; the unedited samples
+are in
+[`GATED_ATTENTION_GENERATION_SAMPLES.md`](GATED_ATTENTION_GENERATION_SAMPLES.md).
+
 ## What the four requested papers contribute
 
 ### BWTA
@@ -221,6 +247,26 @@ K-K similarity structures rather than only copying the final attention matrix.
 
 Although this is a vision paper, those two training ideas transfer cleanly to a
 TinyStories decoder and are now implemented as an ablation.
+
+### Other recent architecture evidence
+
+- [PackQViT](https://openreview.net/forum?id=N56hAiQvot) supports a fully
+  four-bit vision path with integer-friendly nonlinear approximations. It
+  strengthens the implementation case, but does not establish ternary language
+  modeling.
+- [Bipolar Self-Attention](https://openreview.net/forum?id=nG45z7lJ7D) uses
+  ternary Q·K scores and a shift-based softmax in spiking vision models. It is
+  useful evidence for multiplier-free attention, at a different model and data
+  regime.
+- [CAT-Q](https://arxiv.org/abs/2606.26650) uses modulation and softened
+  ternarization for post-training weight conversion. It may improve weight
+  adaptation, but it is weight-only rather than a solution to low-bit
+  activations or residuals.
+- [FiX](https://openreview.net/forum?id=WsNpCXq6SG) argues that the attention
+  denominator can be removed when an immediately downstream RMSNorm cancels its
+  scale. Our current pre-norm residual block adds the attention branch before
+  the next norm, so this equivalence does not directly apply. A sandwich-norm
+  or branch-normalized architecture is a valid future arm.
 
 ## The new combined architecture
 
@@ -263,19 +309,14 @@ the codes directly.
 
 ## The next experiments
 
-### Gate 1: Recover ternary Q/K/V
+### Gate 1: Recover ternary Q/K/V — passed
 
-Run equal-budget 750-step QAT arms:
+The equal-budget 750-step arms are complete. Plain ternary Q/K/V reached 2.289840
+and the strict integer-LUT path reached 2.299876, both below the 2.50 screen.
+This authorizes longer runs and repeated seeds, but neither is yet within 0.05
+of the 2.139060 matched control.
 
-1. COAT A4 + 2-bit probability control.
-2. Forced ternary Q/K/V.
-3. Ternary Q/K/V + Q-ViT rectification + binary no-op gate.
-4. The same model with 2-bit score LUT and 2-bit normalized routes.
-
-The first target is loss below 2.50. If plain ternary Q/K/V remains above 3.0,
-we should not spend a full corpus pass on it.
-
-### Gate 2: Add structured distillation
+### Gate 2: Repeat and refine structured distillation
 
 Use the existing COAT A4 model as teacher. Optimize:
 
@@ -284,13 +325,17 @@ Use the existing COAT A4 model as teacher. Optimize:
 - attention-probability MSE, from BWTA;
 - sampled Q-Q and K-K similarity MSE, from Q-ViT.
 
-Run three seeds for any arm within 0.10 loss of its matched control.
+The first strict-route comparison changed loss by only 0.001755, so the effect
+is not yet distinguishable from run variance. Repeat the two best arms for three
+seeds before tuning distillation weights. Preserve distillation for unstable
+architectural transitions, where the first pilot recovered 0.061579.
 
-### Gate 3: Smooth multistage reduction
+### Gate 3: Smooth multistage residual reduction
 
-If direct ternary Q/K/V QAT fails, train through activation alphabets
-`19 → 15 → 11 → 7 → 3`, with magnitude alignment at every transition. Keep each
-stage only when validation loss recovers before moving to the next.
+Direct ternary Q/K/V QAT passed, so reserve the BWTA-inspired
+`19 → 15 → 11 → 7 → 3` schedule for the harder residual-stream transition.
+Use magnitude alignment at every transition and keep each stage only when
+validation loss recovers before moving to the next.
 
 ### Gate 4: Quantize the remaining residual path
 
@@ -301,6 +346,17 @@ Move one boundary at a time:
 3. learned power-of-two residual scales;
 4. INT3, then two-plane ternary residual;
 5. single-plane ternary residual only if the earlier gates pass.
+
+Alongside that main ladder, test four architecture-focused arms:
+
+- blend Q-ViT rectification gradually from the identity instead of switching it
+  on abruptly;
+- train a soft no-op gate with a sparsity target, then harden it to binary for
+  inference;
+- replace the unused four-level route with a learned three-level or logarithmic
+  codebook;
+- test branch RMSNorm or sandwich normalization so the FiX denominator-removal
+  condition can be evaluated without silently changing the current algebra.
 
 The residual-free architecture is a separate from-scratch arm, not a drop-in
 checkpoint conversion. The 2026 [residual-free

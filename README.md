@@ -16,7 +16,9 @@ The results and COAT follow-up are explained for a broader audience in
 The exact meaning of “completely quantized” is defined in
 [docs/COMPLETE_QUANTIZATION_CONTRACT.md](docs/COMPLETE_QUANTIZATION_CONTRACT.md).
 Matched fixed-prompt outputs are preserved in
-[docs/ATTENTION_GENERATION_SAMPLES.md](docs/ATTENTION_GENERATION_SAMPLES.md).
+[docs/ATTENTION_GENERATION_SAMPLES.md](docs/ATTENTION_GENERATION_SAMPLES.md);
+the newer ternary-QKV and integer-LUT outputs are in
+[docs/GATED_ATTENTION_GENERATION_SAMPLES.md](docs/GATED_ATTENTION_GENERATION_SAMPLES.md).
 
 ## What is implemented
 
@@ -30,6 +32,10 @@ Matched fixed-prompt outputs are preserved in
   ternary-activation arms;
 - four-code attention-score, four-code attention-probability, combined, and
   binary-routing experiments with code-use diagnostics;
+- independently forced ternary Q/K/V, Q-ViT-style rectification, binary no-op
+  gates, and an integer four-entry exponential lookup reference;
+- teacher/student logit, attention-map, and sampled Q-Q/K-K relation
+  distillation;
 - straight-through ternary fake quantization with per-row weight and per-token
   activation scales;
 - training, validation, checkpoint/resume, and text generation;
@@ -44,6 +50,8 @@ not claim a speedup without a fused device kernel.
 
 - [Model checkpoints, packed weights, projections, and
   metrics](https://huggingface.co/sanjuhs/ternary-llm-experiment)
+- [Ternary-QKV and strict integer-LUT pilot
+  artifacts](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/gated-attention-pilot)
 - [Complete tokenized TinyStories
   stream](https://huggingface.co/datasets/sanjuhs/ternary-tinystories-4096)
 
@@ -204,6 +212,9 @@ scripts/remote_run_stage_a.sh
 
 # Run the matched 2-bit attention PTQ and 500-step QAT matrix:
 scripts/remote_attention_pilot.sh
+
+# Run the ternary-QKV, gating, distillation, and integer-LUT pilot:
+scripts/remote_gated_attention_pilot.sh
 ```
 
 The full runner resumes any existing per-mode checkpoint. Copy `artifacts/` back to

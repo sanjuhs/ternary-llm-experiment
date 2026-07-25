@@ -249,3 +249,59 @@ copy before deletion. The first direct-image pod never became ready and was
 replaced by the official PyTorch 2.8 template; both allocations covered about
 24 minutes in total, an upper-bound continuous allocation estimate of about
 $0.28. The final pod was deleted and `runpodctl pod list` returned an empty list.
+
+## Gated ternary-QKV and integer-softmax follow-up
+
+- Date: 2026-07-25
+- GPU: NVIDIA GeForce RTX 4090, 24 GB
+- Price: $0.69/hour
+- Source: `coat_a4` + `prob_int2` checkpoint
+- Validation: 100 deterministic batches per arm
+- QAT budget: 750 steps / 6,144,000 sampled tokens per arm
+- Validation stream: complete 4,907,807-token validation set
+
+### Post-training screen
+
+| Treatment | Loss | Perplexity |
+|---|---:|---:|
+| Matched A4-QKV + 2-bit-probability control | 2.139060 | 8.4915 |
+| Force Q/K/V to ternary | 3.613447 | 37.0937 |
+| Q-ViT rectification + ternary Q/K/V | 4.176283 | 65.1233 |
+| Rectification + binary gate + integer LUT + 2-bit route | 4.021616 | 55.7912 |
+| Same with binary route | 4.497187 | 89.7643 |
+
+This confirms that checkpoint conversion alone is not sufficient. Q-ViT-style
+standardization is especially harmful when inserted without adaptation.
+
+### Equal-budget QAT
+
+| Arm | Loss | Perplexity | Result |
+|---|---:|---:|---|
+| Ternary Q/K/V | **2.289840** | **9.8734** | Best quality |
+| Q-ViT rectification + binary gate | 2.561854 | 12.9598 | Gate open fraction 1.0 |
+| Rectification + gate + distillation | 2.500275 | 12.1858 | Distillation recovered 0.0616 |
+| Integer LUT, no rectification | 2.301631 | 9.9905 | Stable |
+| Integer LUT + distillation, no rectification | **2.299876** | **9.9729** | Best strict arithmetic arm |
+
+Plain ternary Q/K/V passed the predeclared loss-below-2.50 gate. The strict arm
+adds a two-bit score, four-entry Q15 exponential lookup, integer denominator,
+and low-bit attention route for only **0.010036** additional loss relative to
+plain ternary Q/K/V and **0.160816** relative to the matched control.
+
+The abrupt Q-ViT transform did not help this pretrained model. Its binary gates
+also stayed open for every evaluated token, so the experiment does not yet
+demonstrate useful branch sparsity. Distillation helped the damaged rectified
+arm substantially, but improved the already stable strict arm by only 0.001755.
+
+The best strict checkpoint used Q codes approximately 34.475% negative, 29.336%
+zero, and 36.189% positive. Its nominal four-code attention route used only
+three levels: 75.287% code 0, 16.190% code 1, 0% code 2, and 8.523% code 3. A
+learned or logarithmic three-level route is therefore a more relevant next arm
+than blindly preserving four nominal codes.
+
+All gradients remained finite. The 20 result files occupied exactly
+359,033,094 bytes, and every local SHA-256 digest matched the remote copy before
+the pod was deleted. The artifacts are mirrored under
+[`gated-attention-pilot`](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/gated-attention-pilot).
+The generation appendix is
+[`docs/GATED_ATTENTION_GENERATION_SAMPLES.md`](docs/GATED_ATTENTION_GENERATION_SAMPLES.md).
