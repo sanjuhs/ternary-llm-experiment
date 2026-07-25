@@ -20,11 +20,48 @@ uv run ternary-train \
 config="configs/tinystories_28m.toml"
 output="artifacts/tinystories-28m"
 
+record_checkpoint() {
+  local run_name=$1
+  local checkpoint="${output}/${run_name}/checkpoint.pt"
+  local run_dir="${output}/${run_name}"
+
+  uv run ternary-evaluate \
+    --config "${config}" \
+    --checkpoint "${checkpoint}" \
+    --device cuda \
+    --sequential \
+    > "${run_dir}/full-validation.json"
+
+  uv run ternary-diagnostics \
+    --checkpoint "${checkpoint}" \
+    --config "${config}" \
+    --device cuda \
+    > "${run_dir}/diagnostics.json"
+
+  : > "${run_dir}/generations.txt"
+  for prompt in \
+    "Once upon a time" \
+    "Lily found a tiny red door" \
+    "Tom wanted to help his friend"
+  do
+    uv run ternary-generate \
+      --checkpoint "${checkpoint}" \
+      --tokenizer data/full/tokenizer.json \
+      --prompt "${prompt}" \
+      --max-new-tokens 120 \
+      --temperature 0.8 \
+      --top-k 50 \
+      --device cuda \
+      >> "${run_dir}/generations.txt"
+  done
+}
+
 uv run ternary-train \
   --config "${config}" \
   --run-name float-two-pass
 
 float_checkpoint="${output}/float-two-pass/checkpoint.pt"
+record_checkpoint float-two-pass
 
 uv run ternary-train \
   --config "${config}" \
@@ -42,6 +79,7 @@ uv run ternary-train \
 
 ternary_checkpoint="${output}/ternary-weights-one-pass/checkpoint.pt"
 projection="${output}/ternary-weights-projection.pt"
+record_checkpoint ternary-weights-one-pass
 
 uv run ternary-calibrate-projection \
   --checkpoint "${ternary_checkpoint}" \
@@ -67,6 +105,7 @@ uv run ternary-train \
   --hidden-distillation-weight 0.5
 
 coat_checkpoint="${output}/coat-a4-quarter-pass/checkpoint.pt"
+record_checkpoint coat-a4-quarter-pass
 
 uv run ternary-train \
   --config "${config}" \
@@ -87,3 +126,5 @@ uv run ternary-train \
   --logit-distillation-weight 0.1 \
   --attention-distillation-weight 0.5 \
   --hidden-distillation-weight 1.0
+
+record_checkpoint hadamard-ternary-p3-half-pass
