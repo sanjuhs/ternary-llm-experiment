@@ -111,6 +111,23 @@ uv run ternary-train \
 float_checkpoint="${output}/float-two-pass/checkpoint.pt"
 record_checkpoint float-two-pass
 
+if ! uv run python -c \
+  'import json; from pathlib import Path; data = json.loads(Path("artifacts/tinystories-28m/float-two-pass/full-validation.json").read_text()); raise SystemExit(0 if data["loss"] <= 1.5025 else 1)'
+then
+  uv run ternary-train \
+    --config "${config}" \
+    --mode float \
+    --init-from "${float_checkpoint}" \
+    --run-name float-third-pass-refinement \
+    --max-steps 59592 \
+    --learning-rate 0.00003 \
+    --min-learning-rate 0.000003 \
+    --warmup-steps 500 \
+    --weight-decay 0
+  float_checkpoint="${output}/float-third-pass-refinement/checkpoint.pt"
+  record_checkpoint float-third-pass-refinement
+fi
+
 uv run ternary-train \
   --config "${config}" \
   --mode ternary_weights \
