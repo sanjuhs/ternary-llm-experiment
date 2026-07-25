@@ -21,6 +21,17 @@ print(base / min(candidates, key=final_loss) / "checkpoint.pt")
 uv run ternary-train \
   --config configs/residual_refinement_pilot.toml \
   --mode hadamard_progressive \
+  --init-from \
+    artifacts/residual-refinement-pilot/hadamard-binary-p2-long/checkpoint.pt \
+  --teacher-checkpoint artifacts/attention-pilot/prob-int2/checkpoint.pt \
+  --run-name hadamard-binary-p3 \
+  --activation-encoding residual_binary \
+  --activation-planes 3 \
+  --max-steps 2500
+
+uv run ternary-train \
+  --config configs/residual_refinement_pilot.toml \
+  --mode hadamard_progressive \
   --init-from "${p3_seed}" \
   --teacher-checkpoint artifacts/attention-pilot/prob-int2/checkpoint.pt \
   --run-name hadamard-late-p3-mixed \
@@ -53,6 +64,7 @@ uv run ternary-train \
 
 for run_name in \
   hadamard-binary-p2-long \
+  hadamard-binary-p3 \
   hadamard-ternary-p3 \
   hadamard-ternary-p3-long \
   hadamard-late-p3-mixed \
