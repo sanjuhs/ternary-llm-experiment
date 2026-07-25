@@ -188,6 +188,40 @@ operands and persistent boundaries use the declared codes, while dot products,
 row sums, normalization statistics, and scaling use wider temporary state. The
 next layer does not become FP32 merely because a wider accumulator was used.
 
+### Residual-plane matched screen
+
+The one-code bottleneck was then replaced with successive low-bit residual
+refinement planes. Every arm retained ternary weights, ternary Q/K/V, the
+two-bit attention-score path, and the four-entry integer exponential lookup.
+Each received the same 1,500-step QAT budget.
+
+| Projection | Residual representation | Physical code bits / scalar | Final loss | Perplexity | Residual normalized MSE |
+|---|---|---:|---:|---:|---:|
+| Learned COAT | 2 binary planes | **2** | 4.339853 | 76.6963 | 0.126216 |
+| Fixed Hadamard | 2 binary planes | **2** | **4.332306** | **76.1196** | 0.124672 |
+| Learned COAT | 2 ternary planes | 4 | 3.295858 | 27.0006 | 0.043037 |
+| Fixed Hadamard | 2 ternary planes | 4 | **3.288210** | **26.7948** | 0.043436 |
+| Learned COAT | 3 ternary planes | 6 | 2.664104 | 14.3551 | 0.016615 |
+| Fixed Hadamard | 3 ternary planes | 6 | **2.661332** | **14.3153** | 0.016783 |
+
+“Logical bits” such as \(2\log_2(3)=3.17\) are an entropy measure. Ordinary
+hardware packs each ternary plane into two bits, so the honest uncompressed
+physical costs are four and six bits. The two-binary-plane arm is the only
+exact-two-bit activation representation in this table.
+
+The fixed Hadamard transform won every matched trained comparison, despite the
+three-plane learned-COAT arm having the better post-training starting point.
+This rejects the idea that a dense learned rotation is the key remaining
+bottleneck. Quality follows reconstruction error much more strongly: reducing
+residual normalized MSE from 12.47% to 4.34% and 1.68% progressively reduces
+loss from 4.3323 to 3.2882 and 2.6613.
+
+The three-plane result improves the previous best one-code residual loss of
+5.098914 by **2.437582**, but it is still 0.5487 behind the 2.1126 COAT-A4
+control and uses six physical activation bits. Longer exact-two-bit and
+three-plane runs, a layer-aware mixed allocation, and a ReLU hardening stage are
+running before the 27.4M-parameter capacity experiment.
+
 ### Two-bit attention experiments
 
 | Attention representation after 500-step QAT | Loss | Perplexity |
