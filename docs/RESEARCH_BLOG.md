@@ -709,6 +709,15 @@ closer to Gaussian and easier to quantize. Its evidence is at higher activation
 precision, so a residual-free TinyStories model is an architecture experiment,
 not yet proof of a ternary endpoint.
 
+[TernaryLM](https://arxiv.org/abs/2602.07374) is a useful same-dataset caution.
+It trains all projection **weights** ternarily from scratch with adaptive
+layer-wise scales, but retains ordinary activations and reports TinyStories
+validation perplexity 58.42 after training on only 12.9M tokens. Its tokenizer
+and validation protocol differ from ours, so the raw perplexity is not a
+baseline target. Its relevant lessons are native quantization-aware training,
+learned layer scales, and greater sensitivity in boundary layers—not evidence
+that ternary residual activations already match float quality.
+
 Together, these papers suggest two honest follow-ups. For exact two-bit storage,
 improve the two binary planes with block reconstruction, groupwise fixed-point
 scales, and layer sensitivity training. For quality with ternary operators,
