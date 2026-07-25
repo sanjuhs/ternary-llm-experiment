@@ -17,6 +17,20 @@ uv run ternary-train \
   --activation-planes-by-layer 2 2 2 3 3 3 \
   --max-steps 2500
 
+for run_name in \
+  hadamard-binary-p2-long \
+  hadamard-ternary-p3-long \
+  hadamard-late-p3-mixed
+do
+  run_dir="artifacts/residual-refinement-pilot/${run_name}"
+  uv run ternary-evaluate \
+    --config configs/residual_refinement_pilot.toml \
+    --checkpoint "${run_dir}/checkpoint.pt" \
+    --device cuda \
+    --sequential \
+    > "${run_dir}/full-validation.json"
+done
+
 config="configs/tinystories_28m.toml"
 output="artifacts/tinystories-28m"
 
