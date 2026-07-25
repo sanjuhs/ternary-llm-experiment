@@ -456,6 +456,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--transition-rate", type=float)
     parser.add_argument("--max-steps", type=int)
     parser.add_argument("--batch-size", type=int)
+    parser.add_argument("--learning-rate", type=float)
+    parser.add_argument("--min-learning-rate", type=float)
+    parser.add_argument("--warmup-steps", type=int)
+    parser.add_argument("--weight-decay", type=float)
     parser.add_argument("--population-lanes", type=int)
     parser.add_argument("--activation-levels", type=int)
     parser.add_argument("--activation-encoding", choices=VALID_ACTIVATION_ENCODINGS)
@@ -518,6 +522,14 @@ def main() -> None:
         train_overrides["max_steps"] = args.max_steps
     if args.batch_size:
         train_overrides["batch_size"] = args.batch_size
+    if args.learning_rate is not None:
+        train_overrides["learning_rate"] = args.learning_rate
+    if args.min_learning_rate is not None:
+        train_overrides["min_learning_rate"] = args.min_learning_rate
+    if args.warmup_steps is not None:
+        train_overrides["warmup_steps"] = args.warmup_steps
+    if args.weight_decay is not None:
+        train_overrides["weight_decay"] = args.weight_decay
     if args.eval_batches:
         train_overrides["eval_batches"] = args.eval_batches
     if args.output_dir:

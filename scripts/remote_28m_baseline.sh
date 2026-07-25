@@ -21,6 +21,10 @@ uv run ternary-train \
   --teacher-checkpoint "${float_checkpoint}" \
   --run-name ternary-weights-one-pass \
   --max-steps 59592 \
+  --learning-rate 0.00003 \
+  --min-learning-rate 0.000003 \
+  --warmup-steps 500 \
+  --weight-decay 0 \
   --logit-distillation-weight 0.1 \
   --hidden-distillation-weight 0.5
 
@@ -43,6 +47,10 @@ uv run ternary-train \
   --teacher-checkpoint "${float_checkpoint}" \
   --run-name coat-a4-quarter-pass \
   --max-steps 15000 \
+  --learning-rate 0.00003 \
+  --min-learning-rate 0.000003 \
+  --warmup-steps 200 \
+  --weight-decay 0 \
   --logit-distillation-weight 0.1 \
   --hidden-distillation-weight 0.5
 
@@ -60,6 +68,10 @@ uv run ternary-train \
   --attention-quantization score_lut_prob_int2 \
   --attention-clip 3.0 \
   --max-steps 30000 \
+  --learning-rate 0.00003 \
+  --min-learning-rate 0.000003 \
+  --warmup-steps 500 \
+  --weight-decay 0 \
   --logit-distillation-weight 0.1 \
   --attention-distillation-weight 0.5 \
   --hidden-distillation-weight 1.0
