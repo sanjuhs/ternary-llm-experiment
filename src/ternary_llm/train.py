@@ -464,6 +464,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--activation-levels", type=int)
     parser.add_argument("--activation-encoding", choices=VALID_ACTIVATION_ENCODINGS)
     parser.add_argument("--activation-planes", type=int)
+    parser.add_argument("--activation-planes-by-layer", type=int, nargs="+")
     parser.add_argument("--residual-scale", type=float)
     parser.add_argument(
         "--attention-quantization",
@@ -573,6 +574,14 @@ def main() -> None:
         config = replace(
             config,
             model=replace(config.model, activation_planes=args.activation_planes),
+        )
+    if args.activation_planes_by_layer is not None:
+        config = replace(
+            config,
+            model=replace(
+                config.model,
+                activation_planes_by_layer=args.activation_planes_by_layer,
+            ),
         )
     if args.residual_scale:
         config = replace(

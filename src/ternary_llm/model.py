@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from typing import Any
 
 import torch
@@ -559,7 +559,20 @@ class TernaryGPT(nn.Module):
         self.token_embedding = nn.Parameter(torch.empty(config.vocab_size, config.d_model))
         self.position_embedding = nn.Parameter(torch.empty(config.context_length, config.d_model))
         self.dropout = nn.Dropout(config.dropout)
-        self.blocks = nn.ModuleList(TransformerBlock(config, mode) for _ in range(config.n_layers))
+        self.blocks = nn.ModuleList(
+            TransformerBlock(
+                (
+                    replace(
+                        config,
+                        activation_planes=config.activation_planes_by_layer[layer],
+                    )
+                    if config.activation_planes_by_layer is not None
+                    else config
+                ),
+                mode,
+            )
+            for layer in range(config.n_layers)
+        )
         self.final_norm = TernaryRMSNorm(
             config.d_model,
             mode=mode,

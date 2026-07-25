@@ -86,6 +86,7 @@ class ModelConfig:
     activation_levels: int = 19
     activation_encoding: ActivationEncoding = "uniform"
     activation_planes: int = 1
+    activation_planes_by_layer: list[int] | None = None
     weight_threshold: float = 0.5
     population_lanes: int = 1
     residual_scale: float = 1.0
@@ -122,6 +123,15 @@ class ModelConfig:
             )
         if self.activation_planes < 1:
             raise ValueError("activation_planes must be positive")
+        if self.activation_planes_by_layer is not None:
+            if len(self.activation_planes_by_layer) != self.n_layers:
+                raise ValueError(
+                    "activation_planes_by_layer must contain one value per layer"
+                )
+            if any(planes < 1 for planes in self.activation_planes_by_layer):
+                raise ValueError(
+                    "activation_planes_by_layer values must all be positive"
+                )
         if self.population_lanes < 1:
             raise ValueError("population_lanes must be positive")
         if self.residual_scale <= 0:

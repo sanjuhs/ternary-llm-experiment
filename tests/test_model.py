@@ -95,6 +95,26 @@ def test_hadamard_residual_planes_compute_loss_gradients_and_stats(
     assert stats["normalized_mse"] >= 0
 
 
+def test_activation_planes_can_be_allocated_by_layer() -> None:
+    config = ModelConfig(
+        vocab_size=300,
+        context_length=8,
+        d_model=16,
+        n_layers=3,
+        n_heads=2,
+        ff_multiplier=2,
+        activation_encoding="residual_ternary",
+        activation_planes=2,
+        activation_planes_by_layer=[2, 2, 3],
+    )
+    model = TernaryGPT(config, "hadamard_progressive")
+
+    assert [block.activation_planes for block in model.blocks] == [2, 2, 3]
+    assert [
+        block.attention.qkv.activation_planes for block in model.blocks
+    ] == [2, 2, 3]
+
+
 @pytest.mark.parametrize("scheme", VALID_ATTENTION_QUANTIZATIONS)
 def test_attention_quantization_schemes_compute_gradients(scheme: str) -> None:
     config = ModelConfig(

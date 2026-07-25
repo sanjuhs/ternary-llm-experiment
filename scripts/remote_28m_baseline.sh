@@ -5,6 +5,18 @@ cd /workspace/ternary-llm-experiment
 export UV_PROJECT_ENVIRONMENT=/opt/ternary-llm-venv
 export UV_LINK_MODE=copy
 
+uv run ternary-train \
+  --config configs/residual_refinement_pilot.toml \
+  --mode hadamard_progressive \
+  --init-from \
+    artifacts/residual-refinement-pilot/hadamard-ternary-p3-long/checkpoint.pt \
+  --teacher-checkpoint artifacts/attention-pilot/prob-int2/checkpoint.pt \
+  --run-name hadamard-late-p3-mixed \
+  --activation-encoding residual_ternary \
+  --activation-planes 2 \
+  --activation-planes-by-layer 2 2 2 3 3 3 \
+  --max-steps 2500
+
 config="configs/tinystories_28m.toml"
 output="artifacts/tinystories-28m"
 
