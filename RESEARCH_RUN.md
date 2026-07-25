@@ -305,3 +305,73 @@ the pod was deleted. The artifacts are mirrored under
 [`gated-attention-pilot`](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/gated-attention-pilot).
 The generation appendix is
 [`docs/GATED_ATTENTION_GENERATION_SAMPLES.md`](docs/GATED_ATTENTION_GENERATION_SAMPLES.md).
+
+## Progressive fully ternary residual follow-up
+
+- Date: 2026-07-26
+- GPU: NVIDIA A40
+- Price: $0.44/hour
+- Source: best strict ternary-QKV / integer-LUT checkpoint
+- Validation: 100 deterministic batches per stage
+- Residual curriculum: `19 → 15 → 11 → 9 → 7 → 5 → 3`
+- Strict endpoint: ternary weights, ternary Q/K/V, exact ternary residual
+  boundaries, ReLU feed-forward activation, two-bit attention-score codes,
+  four-entry Q15 exponential lookup, and binary attention routes
+
+### Post-training alphabet screen
+
+Before adaptation, the same checkpoint was evaluated with each residual
+alphabet:
+
+| Residual levels | Loss | Perplexity |
+|---:|---:|---:|
+| 19 | 2.671370 | 14.4598 |
+| 15 | 2.827364 | 16.9008 |
+| 11 | 3.136603 | 23.0255 |
+| 9 | 3.473672 | 32.2550 |
+| 7 | 4.088299 | 59.6383 |
+| 5 | 5.136649 | 170.1446 |
+| 3 | 7.546270 | 1,893.6658 |
+
+### Staged quantization-aware training
+
+| Stage | Training budget | Validation loss | Perplexity |
+|---|---:|---:|---:|
+| 19-level GELU | 500 steps | 2.397499 | 10.9956 |
+| 15-level GELU | 500 steps | 2.510083 | 12.3060 |
+| 11-level GELU | 500 steps | 2.764958 | 15.8784 |
+| 9-level GELU | 500 steps | 2.993107 | 19.9476 |
+| 7-level GELU | 500 steps | 3.362680 | 28.8664 |
+| 5-level GELU | 500 steps | 4.236597 | 69.1720 |
+| 3-level GELU | 500 steps | 5.194696 | 180.3133 |
+| 3-level ReLU | 750 steps | 5.148384 | 172.1530 |
+| 3-level ReLU + binary route | 750 steps | 5.142406 | 171.1270 |
+| Same, teacher-free CE-only continuation | 1,500 steps | **5.098914** | **163.8439** |
+
+The final teacher-free validation curve was 5.1569, 5.1307, 5.1165, 5.1107,
+5.1036, and 5.0989 at 250-step intervals. It was still improving, but far too
+slowly to suggest that additional compute alone would reach the A4 control.
+
+The strict endpoint uses all three residual codes, with 26.46% zeros and 73.54%
+saturated nonzeros. Its binary attention routes are 62.17% zero and 37.83% one.
+Q/K/V also use all three ternary codes. All gradients stayed finite.
+
+This improves the previous best one-code residual result from 6.3798 to 5.0989,
+but remains about 2.99 loss behind the COAT A4 checkpoint and produces fragmented
+language. The experiment therefore validates the execution path—not useful
+quality or “same loss.”
+
+The 39 result files occupy exactly 717,242,873 bytes and include ten resumable
+checkpoints, resolved configurations, metric streams, code-use diagnostics, and
+unedited generations. A recursive content comparison matched the RunPod copy.
+They are mirrored under
+[`fully-ternary-pilot`](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/fully-ternary-pilot).
+The generation appendix is
+[`docs/FULLY_TERNARY_GENERATION_SAMPLES.md`](docs/FULLY_TERNARY_GENERATION_SAMPLES.md).
+
+The working A40 pod (`7b9fsqemm7pzdg`) existed from 19:54:18 to approximately
+20:48:47 UTC. That 54.5-minute allocation is about **$0.40** at the quoted
+$0.44/hour rate, before provider-specific accounting adjustments. An earlier
+RTX 4090 allocation never reached container startup, reported zero uptime, and
+was deleted. After the A40 artifacts were mirrored locally and on Hugging Face,
+the A40 was deleted and `runpodctl pod list` returned an empty list.

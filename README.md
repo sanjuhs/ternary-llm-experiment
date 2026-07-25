@@ -19,6 +19,8 @@ Matched fixed-prompt outputs are preserved in
 [docs/ATTENTION_GENERATION_SAMPLES.md](docs/ATTENTION_GENERATION_SAMPLES.md);
 the newer ternary-QKV and integer-LUT outputs are in
 [docs/GATED_ATTENTION_GENERATION_SAMPLES.md](docs/GATED_ATTENTION_GENERATION_SAMPLES.md).
+The strict residual-curriculum outputs are preserved in
+[docs/FULLY_TERNARY_GENERATION_SAMPLES.md](docs/FULLY_TERNARY_GENERATION_SAMPLES.md).
 
 ## What is implemented
 
@@ -34,6 +36,9 @@ the newer ternary-QKV and integer-LUT outputs are in
   binary-routing experiments with code-use diagnostics;
 - independently forced ternary Q/K/V, Q-ViT-style rectification, binary no-op
   gates, and an integer four-entry exponential lookup reference;
+- a BWTA-inspired progressive residual alphabet with magnitude alignment,
+  per-layer code-use diagnostics, hidden-state distillation, and an exact
+  three-code endpoint;
 - teacher/student logit, attention-map, and sampled Q-Q/K-K relation
   distillation;
 - straight-through ternary fake quantization with per-row weight and per-token
@@ -52,11 +57,13 @@ not claim a speedup without a fused device kernel.
   metrics](https://huggingface.co/sanjuhs/ternary-llm-experiment)
 - [Ternary-QKV and strict integer-LUT pilot
   artifacts](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/gated-attention-pilot)
+- [Progressive fully ternary residual pilot
+  artifacts](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/fully-ternary-pilot)
 - [Complete tokenized TinyStories
   stream](https://huggingface.co/datasets/sanjuhs/ternary-tinystories-4096)
 
 Generated data and checkpoints remain ignored by Git; the public Hub repositories
-hold 1.14 GB of experiment artifacts and 986 MB of reproducible token streams.
+hold the experiment checkpoints and reproducible token streams.
 
 ## Setup
 
@@ -215,6 +222,9 @@ scripts/remote_attention_pilot.sh
 
 # Run the ternary-QKV, gating, distillation, and integer-LUT pilot:
 scripts/remote_gated_attention_pilot.sh
+
+# Progressively reduce every residual boundary to exactly three codes:
+scripts/remote_fully_ternary_pilot.sh
 ```
 
 The full runner resumes any existing per-mode checkpoint. Copy `artifacts/` back to

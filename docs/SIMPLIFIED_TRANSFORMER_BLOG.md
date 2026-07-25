@@ -213,12 +213,49 @@ with two-bit codes and a four-entry integer lookup adds only about 0.01 loss.
 However, the strict model is still about 0.16 loss behind the matched control,
 so it is promising rather than equivalent.
 
-The next experiment will repeat the two winning arms across seeds, learn a
-three-level or logarithmic route codebook, and gradually reduce the residual
-stream. We will also train soft gates with a sparsity target before hardening
-them for inference; the first hard-gate experiment never learned to close.
+## Did making the rest ternary work?
+
+We have now run that experiment. Instead of throwing away precision all at once,
+we gave the model fewer and fewer activation choices:
+
+```text
+19 → 15 → 11 → 9 → 7 → 5 → 3
+```
+
+At the final stage, the values saved between Transformer blocks really have only
+three choices: negative, zero, or positive. Q, K, and V are ternary too. We used
+ReLU so the feed-forward step does not need a complicated smooth lookup, and
+attention connections are kept or dropped with a binary route.
+
+The model runs and generates text. That is an important engineering milestone.
+But the text is fragmented, and its best validation loss is **5.0989**. The
+four-bit activation model scored **2.1126**, where lower is better. So this is
+not yet a useful fully ternary language model.
+
+The interesting clue is where quality falls:
+
+| Choices per residual value | Validation loss |
+|---:|---:|
+| 19 | 2.3975 |
+| 11 | 2.7650 |
+| 7 | 3.3627 |
+| 5 | 4.2366 |
+| 3 | **5.0989** after extra training |
+
+The big break happens below seven choices. Think of the residual stream as the
+model's notebook. Three symbols are enough to record a direction, but apparently
+not enough for this ordinary Transformer to preserve all the details it needs
+across six layers.
+
+The next experiment will give each number two or three tiny ternary “planes.”
+Each plane still contains only minus, zero, or plus, so a future chip can keep
+using cheap ternary operations. Combining the planes gives the notebook five or
+seven possible levels. It costs more than one ternary code per number, but it is
+the cleanest way to test whether residual capacity—not the basic ternary
+arithmetic—is the missing ingredient.
 
 The exact result inventory and arithmetic contract are in the
 [experiment ledger](EXPERIMENT_LEDGER_AND_ROADMAP.md). The raw story outputs are
-in the
-[generation appendix](GATED_ATTENTION_GENERATION_SAMPLES.md).
+in the [attention generation appendix](GATED_ATTENTION_GENERATION_SAMPLES.md)
+and the
+[fully ternary generation appendix](FULLY_TERNARY_GENERATION_SAMPLES.md).

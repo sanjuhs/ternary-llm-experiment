@@ -544,6 +544,57 @@ Unedited generations are collected in
 and the exact run inventory is in
 [`EXPERIMENT_LEDGER_AND_ROADMAP.md`](EXPERIMENT_LEDGER_AND_ROADMAP.md).
 
+## We finally crossed every residual boundary with three codes
+
+The next run applied the gradual alphabet reduction that the earlier failure was
+missing. Instead of jumping straight from a smooth activation to three values,
+the student moved through 19, 15, 11, 9, 7, 5, and finally 3 symmetric values.
+Each checkpoint initialized the next stage, and magnitude alignment prevented a
+pure scale shock.
+
+The strict endpoint also replaced GELU with ReLU and hardened attention to a
+binary route. Its large persistent tensors are therefore ternary at inference:
+weights, Q/K/V, residual boundaries, and feed-forward boundaries. Attention
+scores cross a two-bit boundary and use a four-entry integer exponential lookup.
+Dot products, normalization statistics, row sums, and scales still require
+wider temporary state; that is compatible with a ternary data path and necessary
+to avoid overflow.
+
+| Residual codes available | Loss after adaptation |
+|---:|---:|
+| 19 | 2.3975 |
+| 15 | 2.5101 |
+| 11 | 2.7650 |
+| 9 | 2.9931 |
+| 7 | 3.3627 |
+| 5 | 4.2366 |
+| 3, GELU | 5.1947 |
+| 3, ReLU + binary attention | 5.1424 |
+| 3, plus 1,500 CE-only steps | **5.0989** |
+
+This is both progress and a clear negative result. The old one-code residual
+model scored 6.3798, so progressive training recovered 1.2809 loss. The final
+model genuinely used all three residual codes and produced story-shaped
+fragments. But useful grammar and coherence were lost, and it remains far behind
+the 2.1126 A4 result.
+
+The curve also tells us where the problem begins. Quality declines moderately
+from 19 to 7 levels, then drops sharply at 5 and 3. That pattern points to
+insufficient residual-channel capacity, not a broken attention implementation.
+Another long run at three levels may shave the number down, but the last 1,500
+steps improved only 0.0435.
+
+The most informative next test is two- and three-plane ternary residuals. Two
+ternary planes can express a five-level signal; three can express seven levels.
+Every matrix operand remains ternary and an ASIC still uses add/subtract/skip
+operations, while the residual stream retains more information. The tradeoff is
+honest: it is no longer one 1.58-bit code per scalar. We will compare those arms
+against matched INT3 and A4 controls and train each block to reconstruct its
+teacher before end-to-end fine-tuning.
+
+Unedited output is in
+[`FULLY_TERNARY_GENERATION_SAMPLES.md`](FULLY_TERNARY_GENERATION_SAMPLES.md).
+
 ## Training plan for a strict low-bit Transformer
 
 The results now support a staged plan rather than another direct A16-to-ternary

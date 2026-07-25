@@ -1,6 +1,6 @@
 # Ternary LLM experiment ledger and roadmap
 
-*Updated July 25, 2026*
+*Updated July 26, 2026*
 
 This is the compact, auditable answer to three questions:
 
@@ -21,7 +21,9 @@ The best result with ternary weights and 4-bit residual activations is **2.1126*
 The best result with a 2-bit attention representation is **2.1383**. A model with
 forced ternary Q/K/V is **2.289840**; adding the strict two-bit score and
 four-entry integer-LUT route gives **2.299876**. A model with one ternary code at
-every residual boundary has not yet worked: the best such result is **6.3798**.
+every residual boundary now runs and generates, but is not competitive: the best
+strict result is **5.098914** (perplexity **163.8439**), versus 6.3798 before the
+progressive curriculum.
 
 ## What an INT32 accumulator really means
 
@@ -147,6 +149,44 @@ from 0.093699 to \(7.0\times10^{-9}\), with maximum orthogonality error
 
 COAT works as a rotation and slightly helps A4. It cannot recover information
 after every scalar is collapsed to a single ternary code.
+
+### Progressive fully ternary residual experiment
+
+We then held the already validated low-bit attention path fixed and reduced
+every residual boundary through odd symmetric alphabets. Each stage started from
+the preceding checkpoint and received magnitude alignment plus quantization-aware
+training. The final variants changed GELU to ReLU and attention routing to binary
+so the strict inference boundary contains no general activation lookup or
+high-precision attention-probability tensor.
+
+| Residual alphabet after staged QAT | Activation / route | Loss | Perplexity |
+|---:|---|---:|---:|
+| 19 levels | GELU / low-bit | 2.397499 | 10.9956 |
+| 15 levels | GELU / low-bit | 2.510083 | 12.3060 |
+| 11 levels | GELU / low-bit | 2.764958 | 15.8784 |
+| 9 levels | GELU / low-bit | 2.993107 | 19.9476 |
+| 7 levels | GELU / low-bit | 3.362680 | 28.8664 |
+| 5 levels | GELU / low-bit | 4.236597 | 69.1720 |
+| 3 levels | GELU / low-bit | 5.194696 | 180.3133 |
+| 3 levels | ReLU / low-bit | 5.148384 | 172.1530 |
+| 3 levels | ReLU / binary | 5.142406 | 171.1270 |
+| 3 levels, +1,500 CE-only steps | ReLU / binary | **5.098914** | **163.8439** |
+
+The curriculum improves the previous one-code COAT result by **1.2809 loss**,
+and the final residual diagnostic confirms exactly three used levels. Residual
+codes are 26.46% zero and 73.54% nonzero. The binary attention route is 62.17%
+zero and 37.83% one. Gradients stayed finite.
+
+The main scientific finding is a sharp capacity transition below seven levels.
+Additional training at three levels helps slowly, but does not close the gap.
+Generated text contains TinyStories-like fragments while losing grammar and
+long-range coherence. This is a successful execution test and a negative quality
+result, not a solved fully ternary language model.
+
+The implementation remains a PyTorch fake-quantization reference. Large stored
+operands and persistent boundaries use the declared codes, while dot products,
+row sums, normalization statistics, and scaling use wider temporary state. The
+next layer does not become FP32 merely because a wider accumulator was used.
 
 ### Two-bit attention experiments
 
@@ -330,22 +370,29 @@ is not yet distinguishable from run variance. Repeat the two best arms for three
 seeds before tuning distillation weights. Preserve distillation for unstable
 architectural transitions, where the first pilot recovered 0.061579.
 
-### Gate 3: Smooth multistage residual reduction
+### Gate 3: Smooth multistage residual reduction — completed
 
-Direct ternary Q/K/V QAT passed, so reserve the BWTA-inspired
-`19 → 15 → 11 → 7 → 3` schedule for the harder residual-stream transition.
-Use magnitude alignment at every transition and keep each stage only when
-validation loss recovers before moving to the next.
+The BWTA-inspired schedule was implemented and executed as
+`19 → 15 → 11 → 9 → 7 → 5 → 3`. It is substantially better than an abrupt
+ternary switch, but the loss curve exposes a sharp degradation below seven
+levels. The final single-plane result is 5.098914 and therefore fails the
+quality gate.
 
-### Gate 4: Quantize the remaining residual path
+### Gate 4: Increase residual capacity without abandoning ternary operators
 
-Move one boundary at a time:
+The first, second, and single-plane fifth items have now been tested. The next
+best-controlled experiment is a **multi-plane ternary residual**:
 
-1. A4 residual + ternary Q/K/V;
-2. A4 residual + fully low-bit attention;
-3. learned power-of-two residual scales;
-4. INT3, then two-plane ternary residual;
-5. single-plane ternary residual only if the earlier gates pass.
+1. represent a five-level residual with two weighted ternary planes;
+2. represent a seven-level residual with three weighted ternary planes;
+3. constrain plane scales per channel to fixed-point or powers of two;
+4. reconstruct each block against the A4 teacher before end-to-end QAT;
+5. compare the result with matched INT3 and A4 controls.
+
+This keeps every matrix operand ternary and permits an ASIC to compute each
+plane with add/subtract/skip operations, but honestly uses more than one ternary
+code per scalar. It is not the same 1.58-bit storage claim as the rejected
+single-plane endpoint.
 
 Alongside that main ladder, test four architecture-focused arms:
 
