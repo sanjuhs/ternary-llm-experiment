@@ -8,7 +8,12 @@ The exact hypothesis, precision boundary, ablations, metrics, and later discrete
 learning stages are defined in [EXPERIMENT_PLAN.md](EXPERIMENT_PLAN.md). The raw
 conversation that motivated the project is preserved in [idea.md](idea.md).
 The results and COAT follow-up are explained for a broader audience in
-[docs/RESEARCH_BLOG.md](docs/RESEARCH_BLOG.md).
+[docs/RESEARCH_BLOG.md](docs/RESEARCH_BLOG.md). For a gentler introduction, read
+[docs/SIMPLIFIED_TRANSFORMER_BLOG.md](docs/SIMPLIFIED_TRANSFORMER_BLOG.md).
+The exact meaning of “completely quantized” is defined in
+[docs/COMPLETE_QUANTIZATION_CONTRACT.md](docs/COMPLETE_QUANTIZATION_CONTRACT.md).
+Matched fixed-prompt outputs are preserved in
+[docs/ATTENTION_GENERATION_SAMPLES.md](docs/ATTENTION_GENERATION_SAMPLES.md).
 
 ## What is implemented
 
@@ -20,6 +25,8 @@ The results and COAT follow-up are explained for a broader audience in
   population-coded ternary modes;
 - Hadamard and calibrated COAT-style residual projections with matched A4 and
   ternary-activation arms;
+- four-code attention-score, four-code attention-probability, combined, and
+  binary-routing experiments with code-use diagnostics;
 - straight-through ternary fake quantization with per-row weight and per-token
   activation scales;
 - training, validation, checkpoint/resume, and text generation;
@@ -137,6 +144,21 @@ uv run ternary-evaluate \
 `coat_*` modes refuse to run without a calibrated projection. `hadamard_*` modes
 use a fixed normalized Hadamard matrix as the data-independent control.
 
+Evaluate two-bit attention boundaries while keeping the same checkpoint and
+validation samples:
+
+```bash
+uv run ternary-evaluate \
+  --checkpoint artifacts/coat-pilot/coat_a4/checkpoint.pt \
+  --config configs/full.toml \
+  --mode coat_a4 \
+  --projection artifacts/coat/ternary-weights-projection.pt \
+  --attention-quantization score_int2 \
+  --attention-clip 8
+
+# Choices: float, score_int2, prob_int2, score_prob_int2, prob_binary
+```
+
 Population-coded residual pilot:
 
 ```bash
@@ -176,6 +198,9 @@ scripts/remote_benchmark.sh
 
 # Start the complete Stage A matrix only after reviewing benchmark throughput:
 scripts/remote_run_stage_a.sh
+
+# Run the matched 2-bit attention PTQ and 500-step QAT matrix:
+scripts/remote_attention_pilot.sh
 ```
 
 The full runner resumes any existing per-mode checkpoint. Copy `artifacts/` back to

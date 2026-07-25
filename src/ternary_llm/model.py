@@ -12,6 +12,7 @@ from ternary_llm.projection import normalized_hadamard
 from ternary_llm.quantization import (
     code_histogram,
     quantize_activation,
+    quantize_attention,
     quantize_projected_activation,
     requires_coat_calibration,
     ternarize_weight,
@@ -100,6 +101,10 @@ class CausalSelfAttention(nn.Module):
         self.mode = mode
         self.activation_threshold = config.activation_threshold
         self.population_lanes = config.population_lanes if mode == "population_ternary" else 1
+        self.attention_quantization = config.attention_quantization
+        self.attention_clip = config.attention_clip
+        self.attention_threshold = config.attention_threshold
+        self.last_attention_stats: dict[str, float] = {}
 
     def forward(self, inputs: Tensor) -> Tensor:
         batch, length, channels = inputs.shape
@@ -118,13 +123,63 @@ class CausalSelfAttention(nn.Module):
                 v, self.mode, self.activation_threshold, lanes=self.population_lanes
             )
 
-        attended = F.scaled_dot_product_attention(
-            q,
-            k,
-            v,
-            dropout_p=self.dropout if self.training else 0.0,
-            is_causal=True,
+        scores = q @ k.transpose(-2, -1) / self.head_size**0.5
+        valid = torch.ones(
+            (length, length),
+            device=scores.device,
+            dtype=torch.bool,
+        ).tril()
+        probabilities, score_codes, probability_codes = quantize_attention(
+            scores,
+            valid,
+            scheme=self.attention_quantization,
+            clip=self.attention_clip,
+            threshold=self.attention_threshold,
         )
+        if not self.training:
+            diagnostic_mask = valid.to(torch.float32).view(1, 1, length, length)
+            diagnostic_count = diagnostic_mask.sum() * batch * self.n_heads
+            with torch.no_grad():
+                entropy = -(
+                    probabilities.clamp_min(1e-8)
+                    * probabilities.clamp_min(1e-8).log()
+                ).sum(dim=-1)
+                stats = {
+                    "entropy": float(entropy.mean().item()),
+                    "zero_fraction": float(
+                        (
+                            (probabilities == 0).to(torch.float32)
+                            * diagnostic_mask
+                        ).sum().item()
+                        / diagnostic_count.item()
+                    ),
+                }
+                if score_codes is not None:
+                    for code in range(-3, 1):
+                        stats[f"score_code_{code}_fraction"] = float(
+                            (
+                                (score_codes == code).to(torch.float32)
+                                * diagnostic_mask
+                            ).sum().item()
+                            / diagnostic_count.item()
+                        )
+                if probability_codes is not None:
+                    maximum = 1 if self.attention_quantization == "prob_binary" else 3
+                    for code in range(maximum + 1):
+                        stats[f"probability_code_{code}_fraction"] = float(
+                            (
+                                (probability_codes == code).to(torch.float32)
+                                * diagnostic_mask
+                            ).sum().item()
+                            / diagnostic_count.item()
+                        )
+                self.last_attention_stats = stats
+        probabilities = F.dropout(
+            probabilities,
+            p=self.dropout,
+            training=self.training,
+        )
+        attended = probabilities @ v
         attended = attended.transpose(1, 2).contiguous().view(batch, length, channels)
         output = self.projection(attended)
         if uses_quantized_activations(self.mode):
@@ -366,10 +421,36 @@ class TernaryGPT(nn.Module):
         fractions = {key: value / total for key, value in counts.items()}
         return {"enabled": True, "counts": counts, "fractions": fractions}
 
+    def attention_stats(self) -> dict[str, Any]:
+        per_layer = [
+            {"layer": index, **block.attention.last_attention_stats}
+            for index, block in enumerate(self.blocks)
+            if block.attention.last_attention_stats
+        ]
+        aggregate: dict[str, float] = {}
+        if per_layer:
+            keys = set.intersection(*(set(layer) for layer in per_layer)) - {"layer"}
+            aggregate = {
+                key: sum(float(layer[key]) for layer in per_layer) / len(per_layer)
+                for key in sorted(keys)
+            }
+        return {
+            "scheme": self.config.attention_quantization,
+            "clip": self.config.attention_clip,
+            "threshold": self.config.attention_threshold,
+            "aggregate": aggregate,
+            "layers": per_layer,
+        }
+
     def description(self) -> dict[str, Any]:
         return {
             "mode": self.mode,
             "parameters": self.parameter_count(),
             "model": asdict(self.config),
             "quantization": self.quantization_stats(),
+            "attention": {
+                "scheme": self.config.attention_quantization,
+                "clip": self.config.attention_clip,
+                "threshold": self.config.attention_threshold,
+            },
         }

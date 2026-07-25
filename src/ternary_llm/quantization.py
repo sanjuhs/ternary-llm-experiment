@@ -5,7 +5,7 @@ from collections.abc import Sequence
 import torch
 from torch import Tensor
 
-from ternary_llm.config import Mode
+from ternary_llm.config import AttentionQuantization, Mode
 
 
 def uses_ternary_weights(mode: Mode) -> bool:
@@ -129,6 +129,93 @@ def quantize_activation_a4(tensor: Tensor, eps: float = 1e-5) -> Tensor:
     codes = ((tensor.detach() - minimum) / scale).round().clamp(0, 15)
     dequantized = codes * scale + minimum
     return tensor + (dequantized - tensor).detach()
+
+
+def quantize_attention_scores_int2(
+    scores: Tensor,
+    valid: Tensor,
+    *,
+    clip: float,
+) -> tuple[Tensor, Tensor]:
+    """Quantize max-shifted valid softmax inputs to four codes {-3,-2,-1,0}.
+
+    Invalid causal positions remain negative infinity. The returned integer
+    codes are useful for measuring code utilization and emulating a four-entry
+    exponential lookup table.
+    """
+    if clip <= 0:
+        raise ValueError("clip must be positive")
+    masked = scores.masked_fill(~valid, -torch.inf)
+    row_max = masked.amax(dim=-1, keepdim=True)
+    shifted = (masked - row_max).clamp(min=-clip, max=0.0)
+    step = clip / 3.0
+    codes = (shifted.detach() / step).round().clamp(-3, 0)
+    dequantized = codes * step
+    quantized = shifted + (dequantized - shifted).detach()
+    quantized = quantized.masked_fill(~valid, -torch.inf)
+    return quantized, codes.masked_fill(~valid, 0)
+
+
+def quantize_attention_probabilities_int2(
+    probabilities: Tensor,
+    *,
+    eps: float = 1e-8,
+) -> tuple[Tensor, Tensor]:
+    """Quantize each attention row to four non-negative levels and renormalize."""
+    scale = (probabilities.detach().amax(dim=-1, keepdim=True) / 3.0).clamp_min(eps)
+    codes = (probabilities.detach() / scale).round().clamp(0, 3)
+    dequantized = codes * scale
+    normalized = dequantized / dequantized.sum(dim=-1, keepdim=True).clamp_min(eps)
+    quantized = probabilities + (normalized - probabilities).detach()
+    return quantized, codes
+
+
+def quantize_attention_probabilities_binary(
+    probabilities: Tensor,
+    *,
+    threshold: float,
+    eps: float = 1e-8,
+) -> tuple[Tensor, Tensor]:
+    """Binarize attention relative to each row maximum and renormalize.
+
+    The row maximum always survives for thresholds in (0, 1], so every row has
+    at least one active route.
+    """
+    if not 0.0 < threshold <= 1.0:
+        raise ValueError("threshold must be in (0, 1]")
+    cutoff = probabilities.detach().amax(dim=-1, keepdim=True) * threshold
+    codes = (probabilities.detach() >= cutoff).to(probabilities.dtype)
+    normalized = codes / codes.sum(dim=-1, keepdim=True).clamp_min(eps)
+    quantized = probabilities + (normalized - probabilities).detach()
+    return quantized, codes
+
+
+def quantize_attention(
+    scores: Tensor,
+    valid: Tensor,
+    *,
+    scheme: AttentionQuantization,
+    clip: float,
+    threshold: float,
+) -> tuple[Tensor, Tensor | None, Tensor | None]:
+    """Return attention probabilities plus optional score/probability codes."""
+    score_codes = None
+    if scheme in {"score_int2", "score_prob_int2"}:
+        scores, score_codes = quantize_attention_scores_int2(scores, valid, clip=clip)
+    else:
+        scores = scores.masked_fill(~valid, -torch.inf)
+    probabilities = torch.softmax(scores, dim=-1)
+    probability_codes = None
+    if scheme in {"prob_int2", "score_prob_int2"}:
+        probabilities, probability_codes = quantize_attention_probabilities_int2(
+            probabilities
+        )
+    elif scheme == "prob_binary":
+        probabilities, probability_codes = quantize_attention_probabilities_binary(
+            probabilities,
+            threshold=threshold,
+        )
+    return probabilities, score_codes, probability_codes
 
 
 def quantize_activation(tensor: Tensor, mode: Mode, threshold: float, *, lanes: int) -> Tensor:

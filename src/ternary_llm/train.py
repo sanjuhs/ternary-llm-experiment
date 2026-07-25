@@ -14,7 +14,13 @@ import numpy as np
 import torch
 from tokenizers import Tokenizer
 
-from ternary_llm.config import VALID_MODES, ExperimentConfig, load_config, replace_mode
+from ternary_llm.config import (
+    VALID_ATTENTION_QUANTIZATIONS,
+    VALID_MODES,
+    ExperimentConfig,
+    load_config,
+    replace_mode,
+)
 from ternary_llm.model import TernaryGPT
 from ternary_llm.optimizers import (
     StochasticTernaryOptimizer,
@@ -243,6 +249,7 @@ def train(
                 "tokens": processed_tokens,
                 **validation,
                 "weight_codes": model.quantization_stats(),
+                "attention": model.attention_stats(),
             }
             append_metric(metrics_path, metric)
             print(json.dumps(metric))
@@ -278,6 +285,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--population-lanes", type=int)
     parser.add_argument("--residual-scale", type=float)
+    parser.add_argument(
+        "--attention-quantization",
+        choices=VALID_ATTENTION_QUANTIZATIONS,
+    )
+    parser.add_argument("--attention-clip", type=float)
+    parser.add_argument("--attention-threshold", type=float)
     parser.add_argument("--eval-batches", type=int)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--run-name")
@@ -331,6 +344,15 @@ def main() -> None:
             config,
             model=replace(config.model, residual_scale=args.residual_scale),
         )
+    model_overrides = {}
+    if args.attention_quantization:
+        model_overrides["attention_quantization"] = args.attention_quantization
+    if args.attention_clip is not None:
+        model_overrides["attention_clip"] = args.attention_clip
+    if args.attention_threshold is not None:
+        model_overrides["attention_threshold"] = args.attention_threshold
+    if model_overrides:
+        config = replace(config, model=replace(config.model, **model_overrides))
     if train_overrides:
         config = replace(config, train=replace(config.train, **train_overrides))
     config.validate()

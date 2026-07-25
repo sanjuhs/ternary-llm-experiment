@@ -5,6 +5,21 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+AttentionQuantization = Literal[
+    "float",
+    "score_int2",
+    "prob_int2",
+    "score_prob_int2",
+    "prob_binary",
+]
+VALID_ATTENTION_QUANTIZATIONS: tuple[AttentionQuantization, ...] = (
+    "float",
+    "score_int2",
+    "prob_int2",
+    "score_prob_int2",
+    "prob_binary",
+)
+
 Mode = Literal[
     "float",
     "ternary_weights",
@@ -42,6 +57,9 @@ class ModelConfig:
     weight_threshold: float = 0.5
     population_lanes: int = 1
     residual_scale: float = 1.0
+    attention_quantization: AttentionQuantization = "float"
+    attention_clip: float = 6.0
+    attention_threshold: float = 0.5
 
     def validate(self) -> None:
         if self.vocab_size <= 4:
@@ -62,6 +80,15 @@ class ModelConfig:
             raise ValueError("population_lanes must be positive")
         if self.residual_scale <= 0:
             raise ValueError("residual_scale must be positive")
+        if self.attention_quantization not in VALID_ATTENTION_QUANTIZATIONS:
+            raise ValueError(
+                "attention_quantization must be one of "
+                f"{VALID_ATTENTION_QUANTIZATIONS}, got {self.attention_quantization!r}"
+            )
+        if self.attention_clip <= 0:
+            raise ValueError("attention_clip must be positive")
+        if not 0.0 < self.attention_threshold <= 1.0:
+            raise ValueError("attention_threshold must be in (0, 1]")
 
 
 @dataclass(frozen=True)

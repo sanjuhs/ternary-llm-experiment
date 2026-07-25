@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import torch
 
-from ternary_llm.config import VALID_MODES, ModelConfig, load_config
+from ternary_llm.config import (
+    VALID_ATTENTION_QUANTIZATIONS,
+    VALID_MODES,
+    ModelConfig,
+    load_config,
+)
 from ternary_llm.model import TernaryGPT
 from ternary_llm.runtime import TokenStream, evaluate_model, resolve_device
 
@@ -23,6 +29,12 @@ def main() -> None:
         help="evaluate the same checkpoint weights under a different quantization mode",
     )
     parser.add_argument("--projection", type=Path)
+    parser.add_argument(
+        "--attention-quantization",
+        choices=VALID_ATTENTION_QUANTIZATIONS,
+    )
+    parser.add_argument("--attention-clip", type=float)
+    parser.add_argument("--attention-threshold", type=float)
     args = parser.parse_args()
 
     file_config = load_config(args.config)
@@ -30,6 +42,15 @@ def main() -> None:
     checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
     stored = checkpoint["config"]
     model_config = ModelConfig(**stored["model"])
+    model_overrides = {}
+    if args.attention_quantization:
+        model_overrides["attention_quantization"] = args.attention_quantization
+    if args.attention_clip is not None:
+        model_overrides["attention_clip"] = args.attention_clip
+    if args.attention_threshold is not None:
+        model_overrides["attention_threshold"] = args.attention_threshold
+    if model_overrides:
+        model_config = replace(model_config, **model_overrides)
     evaluation_mode = args.mode or stored["mode"]
     model = TernaryGPT(model_config, evaluation_mode).to(device)
     model.load_state_dict(checkpoint["model"], strict=False)
@@ -58,6 +79,7 @@ def main() -> None:
         "projection": str(args.projection) if args.projection else None,
         **metrics,
         "weight_codes": model.quantization_stats(),
+        "attention": model.attention_stats(),
     }
     print(json.dumps(result, indent=2))
 

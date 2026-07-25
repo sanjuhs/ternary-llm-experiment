@@ -203,3 +203,49 @@ The pod existed from 12:24:36 to approximately 12:50 UTC, including a 14-minute
 one-time CUDA environment download. All four checkpoints and metrics were
 size-checked locally before the pod was deleted. Approximate continuous allocation
 cost was $0.30 before provider-specific accounting adjustments.
+
+## Two-bit attention follow-up
+
+- Date: 2026-07-25
+- GPU: NVIDIA GeForce RTX 4090, 24 GB
+- Price: $0.69/hour
+- Source: 1,000-step `coat_a4` checkpoint
+- Post-training evaluation: 100 deterministic full-validation batches per arm
+- QAT budget: 500 steps / 8,192,000 sampled tokens per selected arm
+- Training data: tokenizer-compatible 50,000-story shard
+- Validation data: complete 4,907,807-token validation stream
+
+### Post-training screen
+
+| Attention representation | Setting | Loss | Perplexity |
+|---|---:|---:|---:|
+| float | — | 2.113498 | 8.2771 |
+| 2-bit score | clip 6 | 2.167117 | 8.7331 |
+| 2-bit score | clip 8 | 2.156484 | 8.6407 |
+| 2-bit score | clip 10 | 2.175448 | 8.8061 |
+| 2-bit score | clip 12 | 2.204282 | 9.0637 |
+| 2-bit probability | — | 2.180002 | 8.8463 |
+| 2-bit score + probability | clip 3 | 2.240244 | 9.3956 |
+| 2-bit score + probability | clip 6 | 2.435995 | 11.4272 |
+| binary probability | threshold 0.0625 | 2.316053 | 10.1356 |
+| binary probability | threshold 0.125 | 2.225864 | 9.2615 |
+| binary probability | threshold 0.25 | 2.267027 | 9.6507 |
+| binary probability | threshold 0.5 | 2.784979 | 16.1995 |
+
+### Equal-budget QAT result
+
+| Attention representation | Loss | Perplexity | Gradient behavior |
+|---|---:|---:|---|
+| float control | 2.113237 | 8.2750 | stable |
+| 2-bit score, clip 8 | 2.148911 | 8.5755 | stable |
+| 2-bit probability | 2.138310 | 8.4851 | stable |
+| 2-bit score + probability, clip 3 | 2.156921 | 8.6445 | stable |
+| binary probability, threshold 0.0625 | 2.208475 | 9.1018 | stable |
+| binary probability, threshold 0.125 | 2.188927 | 8.9256 | stable |
+
+All six resumable checkpoints, resolved configurations, and metric logs were
+copied locally. A recursive SHA-256 comparison of every file matched the RunPod
+copy before deletion. The first direct-image pod never became ready and was
+replaced by the official PyTorch 2.8 template; both allocations covered about
+24 minutes in total, an upper-bound continuous allocation estimate of about
+$0.28. The final pod was deleted and `runpodctl pod list` returned an empty list.

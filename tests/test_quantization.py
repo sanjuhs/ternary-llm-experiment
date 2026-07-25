@@ -3,6 +3,9 @@ import torch
 from ternary_llm.quantization import (
     population_ternary_codes,
     quantize_activation_a4,
+    quantize_attention_probabilities_binary,
+    quantize_attention_probabilities_int2,
+    quantize_attention_scores_int2,
     ternarize,
     ternarize_activation,
     ternary_code,
@@ -43,3 +46,34 @@ def test_a4_activation_uses_straight_through_gradient() -> None:
     values = torch.tensor([[0.1, -0.2, 0.7]], requires_grad=True)
     quantize_activation_a4(values).sum().backward()
     assert torch.equal(values.grad, torch.ones_like(values))
+
+
+def test_int2_attention_scores_use_four_codes_and_preserve_mask() -> None:
+    scores = torch.tensor([[[[1.0, 0.0, -2.0], [2.0, 1.0, 0.0], [0.0, -1.0, -4.0]]]])
+    valid = torch.ones(3, 3, dtype=torch.bool).tril()
+    quantized, codes = quantize_attention_scores_int2(scores, valid, clip=6.0)
+
+    assert set(codes[valid.view(1, 1, 3, 3)].tolist()) <= {-3.0, -2.0, -1.0, 0.0}
+    assert torch.isneginf(quantized[0, 0, 0, 1])
+
+
+def test_int2_attention_probabilities_use_four_codes_and_sum_to_one() -> None:
+    probabilities = torch.tensor([[[[0.05, 0.15, 0.30, 0.50]]]], requires_grad=True)
+    quantized, codes = quantize_attention_probabilities_int2(probabilities)
+
+    assert set(codes.unique().tolist()) <= {0.0, 1.0, 2.0, 3.0}
+    assert torch.allclose(quantized.sum(dim=-1), torch.ones(1, 1, 1))
+    quantized.sum().backward()
+    assert probabilities.grad is not None
+
+
+def test_binary_attention_keeps_at_least_the_maximum_route() -> None:
+    probabilities = torch.tensor([[[[0.1, 0.2, 0.3, 0.4]]]])
+    quantized, codes = quantize_attention_probabilities_binary(
+        probabilities,
+        threshold=1.0,
+    )
+
+    assert codes.sum().item() == 1
+    assert quantized.argmax(dim=-1).item() == 3
+    assert torch.allclose(quantized.sum(dim=-1), torch.ones(1, 1, 1))

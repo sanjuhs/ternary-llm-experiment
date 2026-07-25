@@ -277,6 +277,181 @@ second-order-aware rounding, lattice codebooks, and fine-tuning make approximate
 2-bit **weight-only** quantization viable. They are valuable baselines for storage,
 but they do not solve ternary persistent activations.
 
+## Can attention itself fit into two bits?
+
+Attention contains several different numerical objects, so “2-bit attention”
+needs a more exact definition:
+
+1. Q and K are multiplied to produce attention scores.
+2. A row maximum is subtracted for numerical stability.
+3. softmax exponentiates and sums the shifted scores.
+4. the normalized probabilities are multiplied by V.
+
+The Q, K, and V operands can be ternary. The shifted score presented to the
+exponential can use four codes. The normalized probability can also use four
+codes—or even a binary keep/drop decision. The dot-product accumulator and
+softmax denominator cannot be two bits because they sum many terms; they need a
+wider integer representation before the output is requantized.
+
+[EXAQ](https://openreview.net/forum?id=AuJ6gDjcZK) provides the most directly
+relevant low-risk method. It subtracts the row maximum, clips the negative
+softmax input, and quantizes it to as little as two bits. Four input codes permit
+a four-entry exponential lookup table and cheaper grouped accumulation. EXAQ
+reports baseline PIQA accuracy for LLaMA-1 30B and a 36.9% softmax acceleration.
+It does **not** reduce the final normalized probability to two bits, so it solves
+the exponential-input bottleneck rather than every attention boundary.
+
+[I-LLM](https://arxiv.org/abs/2405.17849) shows a complementary path at W4A4.
+Its integer softmax clips shifted inputs and implements the exponential with
+integer shifts; integer normalization and dynamic integer matrix multiplication
+complete the pipeline. This is evidence that all-float softmax is unnecessary,
+but not evidence that uniform two-bit probabilities are sufficient.
+
+[BWTA](https://arxiv.org/abs/2604.03957), published in April 2026, pushes
+further. Its attention path uses ternary Q and K, a high-precision softmax,
+binary attention probabilities with a learned scale, and ternary V. The custom
+binary/ternary matrix-multiplication kernel supports both linear layers and
+attention. Its smooth multi-stage quantizer progressively reduces the activation
+alphabet and uses magnitude-alignment factors, intermediate-state distillation,
+feed-forward-output distillation, logit distillation, and attention-probability
+distillation.
+
+BWTA is important, but its language-model table replaces only 30% of the
+least-sensitive layers and keeps the first/last layers and nonlinear operations
+at higher precision. Its average LLM representation is reported as W1.3/A6. It
+therefore supports our proposed training mechanism without proving a fully
+ternary LLM.
+
+Two other findings explain why the remaining step is hard:
+
+- [Q-ViT](https://arxiv.org/abs/2210.06707) found that quantizing Q,
+  K, V, and attention weights was the most damaging part of a fully 2-bit
+  vision Transformer, costing up to 10.03 percentage points in its ablation.
+  It recovered accuracy with information rectification and
+  distribution-guided attention distillation.
+- [Quantizable Transformers](https://openreview.net/forum?id=sbusw6LD41)
+  connects activation outliers to attention heads attempting to produce a
+  no-update state. Clipped softmax or gated attention gives the architecture a
+  cleaner way to do nothing and improves later quantization.
+
+### Our matched 2-bit attention screen
+
+We replaced PyTorch's opaque fused attention call with an explicit causal path
+and implemented three fake-quantized boundaries:
+
+- `score_int2`: shifted/clipped softmax inputs use codes
+  `{-3, -2, -1, 0}`;
+- `prob_int2`: normalized probabilities use codes `{0, 1, 2, 3}` with a
+  per-row scale and are renormalized;
+- `prob_binary`: routes above a fraction of the row maximum survive and are
+  renormalized.
+
+On ten deterministic full-validation batches from the same 1,000-step COAT-A4
+checkpoint:
+
+| Attention path | Validation loss | Perplexity | Loss change |
+|---|---:|---:|---:|
+| Float attention | 2.1063 | 8.22 | — |
+| 2-bit softmax input | 2.1581 | 8.66 | +0.0518 |
+| 2-bit probability | 2.1744 | 8.80 | +0.0681 |
+| Binary probability, threshold 0.5 | 2.7772 | 16.07 | +0.6708 |
+
+This is a screening result, not a final parity claim. It is nevertheless useful:
+the two genuine four-code variants preserve most of the A4 checkpoint's quality
+without any attention-specific fine-tuning. Binary routing needs a lower
+threshold and/or the learned scale and distillation used by BWTA.
+
+### Full 100-batch GPU result
+
+The 100-batch screen confirmed the ordering and found a clear optimum for both
+clip and binary threshold:
+
+| Attention path | Setting | Loss | Perplexity | Change from control |
+|---|---:|---:|---:|---:|
+| Float attention | — | 2.1135 | 8.277 | — |
+| 2-bit softmax input | clip 6 | 2.1671 | 8.733 | +0.0536 |
+| 2-bit softmax input | **clip 8** | **2.1565** | **8.641** | **+0.0430** |
+| 2-bit softmax input | clip 10 | 2.1754 | 8.806 | +0.0619 |
+| 2-bit softmax input | clip 12 | 2.2043 | 9.064 | +0.0908 |
+| 2-bit probability | — | 2.1800 | 8.846 | +0.0665 |
+| 2-bit score + probability | clip 3 | 2.2402 | 9.396 | +0.1267 |
+| 2-bit score + probability | clip 6 | 2.4360 | 11.427 | +0.3225 |
+| Binary probability | threshold 0.0625 | 2.3161 | 10.136 | +0.2026 |
+| Binary probability | **threshold 0.125** | **2.2259** | **9.262** | **+0.1124** |
+| Binary probability | threshold 0.25 | 2.2670 | 9.651 | +0.1535 |
+| Binary probability | threshold 0.5 | 2.7850 | 16.200 | +0.6715 |
+
+Lower is not always better. A very low binary threshold retains too many routes
+and makes the row too uniform; a high threshold discards too much context. The
+two stacked four-code quantizers also need coordinated scales. At clip 6, the
+score spacing makes the subsequent probability quantizer almost binary. Clip 3
+preserves an intermediate nonzero level and substantially reduces the damage.
+
+Every selected arm was then reinitialized from the same COAT-A4 checkpoint and
+fine-tuned for 500 steps, or 8,192,000 sampled tokens:
+
+| Fine-tuned attention path | Loss | Perplexity | Gap to trained control |
+|---|---:|---:|---:|
+| Float attention control | 2.1132 | 8.275 | — |
+| 2-bit softmax input, clip 8 | 2.1489 | 8.576 | +0.0357 |
+| **2-bit probability** | **2.1383** | **8.485** | **+0.0251** |
+| 2-bit score + probability, clip 3 | 2.1569 | 8.644 | +0.0437 |
+| Binary probability, threshold 0.0625 | 2.2085 | 9.102 | +0.0952 |
+| Binary probability, threshold 0.125 | 2.1889 | 8.926 | +0.0757 |
+
+The probability-only arm is the quality winner. Its perplexity is about 2.5%
+higher than the matched control, so “identical loss” is not yet supported. The
+strict combined arm is the more important systems result: both the softmax input
+and normalized routing cross four-code boundaries, yet its loss is only 0.0437
+above the trained control after a short adaptation.
+
+The combined arm does not use all four probability codes: because the four
+softmax-input values produce a structured exponential distribution, its
+probability codes are predominantly 0, 1, and 3. A learned joint codebook or a
+two-bit log/exponent representation is therefore a better next step than two
+independent uniform quantizers.
+
+Fixed-seed generations from three prompts remain recognizably TinyStories-like
+for the control, best-quality two-bit arm, and strict combined arm. All three
+show the grammar and repetition limitations expected from this 5.8M-parameter
+model; none of the quantized arms exhibits a distinct collapse. The unedited
+outputs are in
+[the matched generation appendix](ATTENTION_GENERATION_SAMPLES.md).
+
+## Training plan for a strict low-bit Transformer
+
+The results now support a staged plan rather than another direct A16-to-ternary
+jump:
+
+1. **Establish the matched controls.** Repeat A16, COAT-A4, and every attention
+   variant on identical batches and at least three seeds.
+2. **Make attention low-bit while residuals remain A4.** Select between 2-bit
+   softmax inputs, 2-bit probabilities, their combination, and thresholded
+   binary routing.
+3. **Add teacher supervision.** Match the A16 teacher's logits, attention maps,
+   attention outputs, and block outputs. Attention-map KL and attention-output
+   MSE are better targets than raw score MSE because many score matrices produce
+   similar normalized routing.
+4. **Reduce the activation alphabet gradually.** Use odd level counts such as
+   19, 15, 11, 7, and 3, align magnitude at every transition, and spend at least
+   half the budget at the final ternary stage.
+5. **Learn thresholds and scales per layer/head.** Fixed global thresholds are
+   a diagnostic baseline, not a likely optimum.
+6. **Reconstruct one block at a time.** Minimize each quantized block's output
+   error before whole-model language training so early errors do not avalanche
+   through the residual stream.
+7. **Test a quantization-friendly architecture.** Gated/no-op attention and a
+   residual-free control directly target the two mechanisms implicated by the
+   current diagnostics and literature.
+8. **Export and benchmark the real representation.** Pack ternary values into
+   two bits, use low-bit operands with wide accumulators, requantize every
+   persistent boundary, and compare memory, throughput, energy proxy, loss, and
+   generation—not only checkpoint size.
+
+The quality gates remain strict: a short run may eliminate a bad idea, but
+“same loss” requires full-validation confidence intervals, repeated seeds,
+fixed-prompt generations, and a matched float/A4 control.
+
 ## Current conclusion
 
 Can COAT “ternarize the weights and generate everything in ternary” by itself?
