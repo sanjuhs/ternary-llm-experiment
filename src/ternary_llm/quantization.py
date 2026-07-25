@@ -121,6 +121,17 @@ def ternarize_activation(
     return tensor + (dequantized - tensor).detach()
 
 
+def ternary_activation_codes(
+    tensor: Tensor,
+    threshold: float = 0.5,
+    *,
+    eps: float = 1e-5,
+) -> tuple[Tensor, Tensor]:
+    """Return per-vector ternary codes and their detached dynamic scales."""
+    scale = _scale(tensor, -1, eps=eps)
+    return ternary_code(tensor.detach() / scale, threshold), scale
+
+
 def quantize_activation_a4(tensor: Tensor, eps: float = 1e-5) -> Tensor:
     """Per-vector asymmetric fake quantization to 16 activation levels."""
     minimum = tensor.detach().amin(dim=-1, keepdim=True)
@@ -190,6 +201,36 @@ def quantize_attention_probabilities_binary(
     return quantized, codes
 
 
+def integer_softmax_from_int2_codes(
+    scores: Tensor,
+    codes: Tensor,
+    valid: Tensor,
+    *,
+    clip: float,
+    fraction_bits: int = 15,
+) -> tuple[Tensor, Tensor]:
+    """Emulate a four-entry integer exponential LUT and integer row sum.
+
+    The forward values are produced from Q-format integer numerators and an
+    integer denominator. The backward path follows ordinary softmax, which is
+    the straight-through surrogate used during QAT.
+    """
+    if fraction_bits < 1 or fraction_bits > 30:
+        raise ValueError("fraction_bits must be between 1 and 30")
+    step = clip / 3.0
+    codebook = torch.arange(-3, 1, device=scores.device, dtype=torch.float32)
+    multiplier = 1 << fraction_bits
+    lookup = (torch.exp(codebook * step) * multiplier).round().clamp_min(1)
+    indices = (codes.to(torch.long) + 3).clamp(0, 3)
+    integer_numerators = lookup[indices].to(scores.dtype)
+    integer_numerators = integer_numerators.masked_fill(~valid, 0)
+    integer_denominator = integer_numerators.sum(dim=-1, keepdim=True).clamp_min(1)
+    fixed = integer_numerators / integer_denominator
+    surrogate = torch.softmax(scores, dim=-1)
+    probabilities = surrogate + (fixed - surrogate).detach()
+    return probabilities, integer_numerators
+
+
 def quantize_attention(
     scores: Tensor,
     valid: Tensor,
@@ -200,17 +241,34 @@ def quantize_attention(
 ) -> tuple[Tensor, Tensor | None, Tensor | None]:
     """Return attention probabilities plus optional score/probability codes."""
     score_codes = None
-    if scheme in {"score_int2", "score_prob_int2"}:
+    score_schemes = {
+        "score_int2",
+        "score_int2_lut",
+        "score_prob_int2",
+        "score_lut_prob_int2",
+        "score_lut_prob_binary",
+    }
+    if scheme in score_schemes:
         scores, score_codes = quantize_attention_scores_int2(scores, valid, clip=clip)
     else:
         scores = scores.masked_fill(~valid, -torch.inf)
-    probabilities = torch.softmax(scores, dim=-1)
+    if scheme in {"score_int2_lut", "score_lut_prob_int2", "score_lut_prob_binary"}:
+        if score_codes is None:
+            raise AssertionError("integer softmax requires score codes")
+        probabilities, _ = integer_softmax_from_int2_codes(
+            scores,
+            score_codes,
+            valid,
+            clip=clip,
+        )
+    else:
+        probabilities = torch.softmax(scores, dim=-1)
     probability_codes = None
-    if scheme in {"prob_int2", "score_prob_int2"}:
+    if scheme in {"prob_int2", "score_prob_int2", "score_lut_prob_int2"}:
         probabilities, probability_codes = quantize_attention_probabilities_int2(
             probabilities
         )
-    elif scheme == "prob_binary":
+    elif scheme in {"prob_binary", "score_lut_prob_binary"}:
         probabilities, probability_codes = quantize_attention_probabilities_binary(
             probabilities,
             threshold=threshold,

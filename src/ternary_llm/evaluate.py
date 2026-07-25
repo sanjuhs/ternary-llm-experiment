@@ -8,8 +8,11 @@ from pathlib import Path
 import torch
 
 from ternary_llm.config import (
+    VALID_ATTENTION_GATES,
     VALID_ATTENTION_QUANTIZATIONS,
+    VALID_ATTENTION_RECTIFICATIONS,
     VALID_MODES,
+    VALID_QKV_QUANTIZATIONS,
     ModelConfig,
     load_config,
 )
@@ -35,6 +38,13 @@ def main() -> None:
     )
     parser.add_argument("--attention-clip", type=float)
     parser.add_argument("--attention-threshold", type=float)
+    parser.add_argument("--qkv-quantization", choices=VALID_QKV_QUANTIZATIONS)
+    parser.add_argument(
+        "--attention-rectification",
+        choices=VALID_ATTENTION_RECTIFICATIONS,
+    )
+    parser.add_argument("--attention-gate", choices=VALID_ATTENTION_GATES)
+    parser.add_argument("--attention-gate-initial", type=float)
     args = parser.parse_args()
 
     file_config = load_config(args.config)
@@ -49,6 +59,14 @@ def main() -> None:
         model_overrides["attention_clip"] = args.attention_clip
     if args.attention_threshold is not None:
         model_overrides["attention_threshold"] = args.attention_threshold
+    if args.qkv_quantization:
+        model_overrides["qkv_quantization"] = args.qkv_quantization
+    if args.attention_rectification:
+        model_overrides["attention_rectification"] = args.attention_rectification
+    if args.attention_gate:
+        model_overrides["attention_gate"] = args.attention_gate
+    if args.attention_gate_initial is not None:
+        model_overrides["attention_gate_initial"] = args.attention_gate_initial
     if model_overrides:
         model_config = replace(model_config, **model_overrides)
     evaluation_mode = args.mode or stored["mode"]

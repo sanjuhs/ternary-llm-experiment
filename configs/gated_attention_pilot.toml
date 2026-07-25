@@ -1,0 +1,46 @@
+seed = 17
+mode = "coat_a4"
+device = "cuda"
+
+[model]
+vocab_size = 4096
+context_length = 256
+d_model = 256
+n_layers = 6
+n_heads = 8
+ff_multiplier = 4
+dropout = 0.0
+activation_threshold = 0.5
+weight_threshold = 0.5
+attention_quantization = "prob_int2"
+attention_clip = 6.0
+attention_threshold = 0.125
+qkv_quantization = "ternary"
+attention_rectification = "none"
+attention_gate = "none"
+attention_gate_initial = 0.9
+
+[data]
+train_bin = "data/processed/train.bin"
+validation_bin = "data/full/validation.bin"
+tokenizer = "data/processed/tokenizer.json"
+
+[train]
+batch_size = 32
+max_steps = 750
+learning_rate = 0.00003
+min_learning_rate = 0.000003
+warmup_steps = 75
+weight_decay = 0.0
+grad_clip = 1.0
+eval_interval = 250
+eval_batches = 100
+checkpoint_interval = 250
+output_dir = "artifacts/gated-attention-pilot"
+log_interval = 20
+precision = "bf16"
+logit_distillation_weight = 0.0
+attention_distillation_weight = 0.0
+qk_distillation_weight = 0.0
+distillation_temperature = 1.0
+distillation_token_stride = 4

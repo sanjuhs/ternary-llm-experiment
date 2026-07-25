@@ -8,6 +8,7 @@ from ternary_llm.config import (
 )
 from ternary_llm.model import TernaryGPT
 from ternary_llm.projection import normalized_hadamard
+from ternary_llm.train import distillation_loss
 
 
 @pytest.mark.parametrize("mode", VALID_MODES)
@@ -106,3 +107,108 @@ def test_causal_attention_does_not_read_future_tokens() -> None:
     logits_a, _ = model(first)
     logits_b, _ = model(changed_future)
     assert torch.allclose(logits_a[:, 0], logits_b[:, 0])
+
+
+def test_gated_rectified_attention_forces_ternary_qkv() -> None:
+    config = ModelConfig(
+        vocab_size=300,
+        context_length=8,
+        d_model=16,
+        n_layers=1,
+        n_heads=2,
+        ff_multiplier=2,
+        qkv_quantization="ternary",
+        attention_rectification="qvit",
+        attention_gate="binary",
+        attention_quantization="score_int2_lut",
+    )
+    model = TernaryGPT(config, "ternary_weights").eval()
+    inputs = torch.randint(0, config.vocab_size, (2, config.context_length))
+    _, loss = model(inputs, inputs)
+
+    assert loss is not None and torch.isfinite(loss)
+    loss.backward()
+    stats = model.attention_stats()["aggregate"]
+    for name in ("q", "k", "v"):
+        total = sum(
+            stats[f"{name}_{label}_fraction"]
+            for label in ("negative", "zero", "positive")
+        )
+        assert total == pytest.approx(1.0)
+    assert stats["gate_open_fraction"] == 1.0
+
+
+def test_attention_and_qk_distillation_compute_student_gradients() -> None:
+    from dataclasses import replace
+
+    from ternary_llm.config import DataConfig, ExperimentConfig, TrainConfig
+
+    model_config = ModelConfig(
+        vocab_size=300,
+        context_length=8,
+        d_model=16,
+        n_layers=1,
+        n_heads=2,
+        ff_multiplier=2,
+        qkv_quantization="ternary",
+        attention_rectification="qvit",
+        attention_gate="binary",
+        attention_quantization="score_int2_lut",
+    )
+    student = TernaryGPT(model_config, "ternary_weights")
+    teacher = TernaryGPT(
+        replace(
+            model_config,
+            qkv_quantization="inherit",
+            attention_rectification="none",
+            attention_gate="none",
+            attention_quantization="float",
+        ),
+        "ternary_weights",
+    )
+    student.set_capture_distillation(True)
+    teacher.set_capture_distillation(True)
+    inputs = torch.randint(0, model_config.vocab_size, (2, model_config.context_length))
+    student_logits, _ = student(inputs, inputs)
+    with torch.no_grad():
+        teacher_logits, _ = teacher(inputs)
+    config = ExperimentConfig(
+        seed=17,
+        mode="ternary_weights",
+        device="cpu",
+        model=model_config,
+        data=DataConfig(train_bin="unused", validation_bin="unused", tokenizer="unused"),
+        train=TrainConfig(
+            batch_size=2,
+            max_steps=1,
+            learning_rate=1e-3,
+            min_learning_rate=0.0,
+            warmup_steps=0,
+            weight_decay=0.0,
+            grad_clip=1.0,
+            eval_interval=1,
+            eval_batches=1,
+            checkpoint_interval=1,
+            output_dir="unused",
+            logit_distillation_weight=0.1,
+            attention_distillation_weight=0.2,
+            qk_distillation_weight=0.3,
+            distillation_token_stride=2,
+        ),
+    )
+    auxiliary, metrics = distillation_loss(
+        student,
+        teacher,
+        student_logits,
+        teacher_logits,
+        config,
+    )
+    auxiliary.backward()
+
+    assert torch.isfinite(auxiliary)
+    assert set(metrics) == {
+        "logit_distillation_loss",
+        "attention_distillation_loss",
+        "qk_distillation_loss",
+    }
+    assert student.blocks[0].attention.q_gamma.grad is not None

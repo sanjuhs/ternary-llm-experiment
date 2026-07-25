@@ -1,5 +1,8 @@
 # Ternary LLM Experiment
 
+For the complete result inventory and the next ternary-QKV architecture, see
+[the experiment ledger and roadmap](docs/EXPERIMENT_LEDGER_AND_ROADMAP.md).
+
 This repository tests whether a small GPT-style language model can learn TinyStories
 while its learned weights and persistent forward activations use ternary codes
 `{-1, 0, +1}`.

@@ -8,17 +8,32 @@ from typing import Any, Literal
 AttentionQuantization = Literal[
     "float",
     "score_int2",
+    "score_int2_lut",
     "prob_int2",
     "score_prob_int2",
+    "score_lut_prob_int2",
     "prob_binary",
+    "score_lut_prob_binary",
 ]
 VALID_ATTENTION_QUANTIZATIONS: tuple[AttentionQuantization, ...] = (
     "float",
     "score_int2",
+    "score_int2_lut",
     "prob_int2",
     "score_prob_int2",
+    "score_lut_prob_int2",
     "prob_binary",
+    "score_lut_prob_binary",
 )
+
+QKVQuantization = Literal["inherit", "ternary"]
+VALID_QKV_QUANTIZATIONS: tuple[QKVQuantization, ...] = ("inherit", "ternary")
+
+AttentionRectification = Literal["none", "qvit"]
+VALID_ATTENTION_RECTIFICATIONS: tuple[AttentionRectification, ...] = ("none", "qvit")
+
+AttentionGate = Literal["none", "sigmoid", "binary"]
+VALID_ATTENTION_GATES: tuple[AttentionGate, ...] = ("none", "sigmoid", "binary")
 
 Mode = Literal[
     "float",
@@ -60,6 +75,10 @@ class ModelConfig:
     attention_quantization: AttentionQuantization = "float"
     attention_clip: float = 6.0
     attention_threshold: float = 0.5
+    qkv_quantization: QKVQuantization = "inherit"
+    attention_rectification: AttentionRectification = "none"
+    attention_gate: AttentionGate = "none"
+    attention_gate_initial: float = 0.9
 
     def validate(self) -> None:
         if self.vocab_size <= 4:
@@ -89,6 +108,24 @@ class ModelConfig:
             raise ValueError("attention_clip must be positive")
         if not 0.0 < self.attention_threshold <= 1.0:
             raise ValueError("attention_threshold must be in (0, 1]")
+        if self.qkv_quantization not in VALID_QKV_QUANTIZATIONS:
+            raise ValueError(
+                f"qkv_quantization must be one of {VALID_QKV_QUANTIZATIONS}, "
+                f"got {self.qkv_quantization!r}"
+            )
+        if self.attention_rectification not in VALID_ATTENTION_RECTIFICATIONS:
+            raise ValueError(
+                "attention_rectification must be one of "
+                f"{VALID_ATTENTION_RECTIFICATIONS}, "
+                f"got {self.attention_rectification!r}"
+            )
+        if self.attention_gate not in VALID_ATTENTION_GATES:
+            raise ValueError(
+                f"attention_gate must be one of {VALID_ATTENTION_GATES}, "
+                f"got {self.attention_gate!r}"
+            )
+        if not 0.0 < self.attention_gate_initial < 1.0:
+            raise ValueError("attention_gate_initial must be in (0, 1)")
 
 
 @dataclass(frozen=True)
@@ -116,6 +153,11 @@ class TrainConfig:
     optimizer: str = "adamw"
     counter_threshold: int = 8
     transition_rate: float = 0.002
+    logit_distillation_weight: float = 0.0
+    attention_distillation_weight: float = 0.0
+    qk_distillation_weight: float = 0.0
+    distillation_temperature: float = 1.0
+    distillation_token_stride: int = 4
 
     def validate(self) -> None:
         integer_fields = {
@@ -147,6 +189,17 @@ class TrainConfig:
             raise ValueError("counter_threshold must be between 1 and 127")
         if not 0.0 < self.transition_rate <= 1.0:
             raise ValueError("transition_rate must be in (0, 1]")
+        distillation_weights = (
+            self.logit_distillation_weight,
+            self.attention_distillation_weight,
+            self.qk_distillation_weight,
+        )
+        if any(weight < 0 for weight in distillation_weights):
+            raise ValueError("distillation weights must be non-negative")
+        if self.distillation_temperature <= 0:
+            raise ValueError("distillation_temperature must be positive")
+        if self.distillation_token_stride < 1:
+            raise ValueError("distillation_token_stride must be positive")
 
 
 @dataclass(frozen=True)

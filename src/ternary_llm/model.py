@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import asdict
 from typing import Any
 
@@ -15,7 +16,9 @@ from ternary_llm.quantization import (
     quantize_attention,
     quantize_projected_activation,
     requires_coat_calibration,
+    ternarize_activation,
     ternarize_weight,
+    ternary_activation_codes,
     uses_activation_projection,
     uses_quantized_activations,
     uses_ternary_weights,
@@ -99,19 +102,80 @@ class CausalSelfAttention(nn.Module):
         self.qkv = TernaryLinear(config.d_model, 3 * config.d_model, **linear_args)
         self.projection = TernaryLinear(config.d_model, config.d_model, **linear_args)
         self.mode = mode
+        self.weight_threshold = config.weight_threshold
         self.activation_threshold = config.activation_threshold
         self.population_lanes = config.population_lanes if mode == "population_ternary" else 1
         self.attention_quantization = config.attention_quantization
         self.attention_clip = config.attention_clip
         self.attention_threshold = config.attention_threshold
+        self.qkv_quantization = config.qkv_quantization
+        self.attention_rectification = config.attention_rectification
+        self.attention_gate = config.attention_gate
+        if self.attention_rectification == "qvit":
+            parameter_shape = (1, self.n_heads, 1, self.head_size)
+            self.q_gamma = nn.Parameter(torch.ones(parameter_shape))
+            self.q_beta = nn.Parameter(torch.zeros(parameter_shape))
+            self.k_gamma = nn.Parameter(torch.ones(parameter_shape))
+            self.k_beta = nn.Parameter(torch.zeros(parameter_shape))
+        else:
+            self.register_parameter("q_gamma", None)
+            self.register_parameter("q_beta", None)
+            self.register_parameter("k_gamma", None)
+            self.register_parameter("k_beta", None)
+        if self.attention_gate != "none":
+            self.gate_weight = nn.Parameter(torch.zeros(self.n_heads, self.head_size))
+            initial_logit = math.log(
+                config.attention_gate_initial / (1.0 - config.attention_gate_initial)
+            )
+            self.gate_bias = nn.Parameter(torch.full((self.n_heads,), initial_logit))
+        else:
+            self.register_parameter("gate_weight", None)
+            self.register_parameter("gate_bias", None)
         self.last_attention_stats: dict[str, float] = {}
+        self.capture_distillation = False
+        self.last_q: Tensor | None = None
+        self.last_k: Tensor | None = None
+        self.last_probabilities: Tensor | None = None
 
-    def forward(self, inputs: Tensor) -> Tensor:
-        batch, length, channels = inputs.shape
-        qkv = self.qkv(inputs)
-        qkv = qkv.view(batch, length, 3, self.n_heads, self.head_size)
-        q, k, v = qkv.permute(2, 0, 3, 1, 4).unbind(dim=0)
+    @staticmethod
+    def _standardize(tensor: Tensor) -> Tensor:
+        centered = tensor - tensor.mean(dim=-1, keepdim=True)
+        return centered * torch.rsqrt(
+            centered.square().mean(dim=-1, keepdim=True) + 1e-5
+        )
 
+    def _rectify_qk(self, q: Tensor, k: Tensor) -> tuple[Tensor, Tensor]:
+        if self.attention_rectification != "qvit":
+            return q, k
+        if any(
+            parameter is None
+            for parameter in (self.q_gamma, self.q_beta, self.k_gamma, self.k_beta)
+        ):
+            raise AssertionError("Q-ViT rectification parameters are missing")
+        q = self._standardize(q) * self.q_gamma + self.q_beta
+        k = self._standardize(k) * self.k_gamma + self.k_beta
+        return q, k
+
+    def _quantize_qkv(
+        self,
+        q: Tensor,
+        k: Tensor,
+        v: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor, dict[str, Tensor]]:
+        code_tensors: dict[str, Tensor] = {}
+        if self.qkv_quantization == "ternary":
+            for name, tensor in (("q", q), ("k", k), ("v", v)):
+                codes, _ = ternary_activation_codes(
+                    tensor,
+                    self.activation_threshold,
+                )
+                code_tensors[name] = codes
+            return (
+                ternarize_activation(q, self.activation_threshold),
+                ternarize_activation(k, self.activation_threshold),
+                ternarize_activation(v, self.activation_threshold),
+                code_tensors,
+            )
         if uses_quantized_activations(self.mode):
             q = quantize_activation(
                 q, self.mode, self.activation_threshold, lanes=self.population_lanes
@@ -122,6 +186,38 @@ class CausalSelfAttention(nn.Module):
             v = quantize_activation(
                 v, self.mode, self.activation_threshold, lanes=self.population_lanes
             )
+        return q, k, v, code_tensors
+
+    def _attention_gate(self, inputs: Tensor) -> tuple[Tensor | None, Tensor | None]:
+        if self.attention_gate == "none":
+            return None, None
+        if self.gate_weight is None or self.gate_bias is None:
+            raise AssertionError("attention gate parameters are missing")
+        batch, length, _ = inputs.shape
+        head_inputs = inputs.view(
+            batch,
+            length,
+            self.n_heads,
+            self.head_size,
+        ).permute(0, 2, 1, 3)
+        gate_inputs = ternarize_activation(head_inputs, self.activation_threshold)
+        gate_weight = ternarize_weight(self.gate_weight, self.weight_threshold)
+        logits = (gate_inputs * gate_weight.view(1, self.n_heads, 1, -1)).sum(dim=-1)
+        logits = logits + self.gate_bias.view(1, self.n_heads, 1)
+        probabilities = torch.sigmoid(logits)
+        if self.attention_gate == "binary":
+            codes = (probabilities.detach() >= 0.5).to(probabilities.dtype)
+            probabilities = probabilities + (codes - probabilities).detach()
+            return probabilities, codes
+        return probabilities, None
+
+    def forward(self, inputs: Tensor) -> Tensor:
+        batch, length, channels = inputs.shape
+        qkv = self.qkv(inputs)
+        qkv = qkv.view(batch, length, 3, self.n_heads, self.head_size)
+        q, k, v = qkv.permute(2, 0, 3, 1, 4).unbind(dim=0)
+        q, k = self._rectify_qk(q, k)
+        q, k, v, qkv_codes = self._quantize_qkv(q, k, v)
 
         scores = q @ k.transpose(-2, -1) / self.head_size**0.5
         valid = torch.ones(
@@ -136,6 +232,11 @@ class CausalSelfAttention(nn.Module):
             clip=self.attention_clip,
             threshold=self.attention_threshold,
         )
+        gate, gate_codes = self._attention_gate(inputs)
+        if self.capture_distillation:
+            self.last_q = q
+            self.last_k = k
+            self.last_probabilities = probabilities
         if not self.training:
             diagnostic_mask = valid.to(torch.float32).view(1, 1, length, length)
             diagnostic_count = diagnostic_mask.sum() * batch * self.n_heads
@@ -164,15 +265,29 @@ class CausalSelfAttention(nn.Module):
                             / diagnostic_count.item()
                         )
                 if probability_codes is not None:
-                    maximum = 1 if self.attention_quantization == "prob_binary" else 3
+                    maximum = (
+                        1
+                        if self.attention_quantization
+                        in {"prob_binary", "score_lut_prob_binary"}
+                        else 3
+                    )
                     for code in range(maximum + 1):
                         stats[f"probability_code_{code}_fraction"] = float(
                             (
                                 (probability_codes == code).to(torch.float32)
                                 * diagnostic_mask
                             ).sum().item()
-                            / diagnostic_count.item()
+                                / diagnostic_count.item()
                         )
+                for name, codes in qkv_codes.items():
+                    for code, label in ((-1, "negative"), (0, "zero"), (1, "positive")):
+                        stats[f"{name}_{label}_fraction"] = float(
+                            (codes == code).to(torch.float32).mean().item()
+                        )
+                if gate is not None:
+                    stats["gate_mean"] = float(gate.mean().item())
+                if gate_codes is not None:
+                    stats["gate_open_fraction"] = float(gate_codes.mean().item())
                 self.last_attention_stats = stats
         probabilities = F.dropout(
             probabilities,
@@ -180,6 +295,8 @@ class CausalSelfAttention(nn.Module):
             training=self.training,
         )
         attended = probabilities @ v
+        if gate is not None:
+            attended = attended * gate.unsqueeze(-1)
         attended = attended.transpose(1, 2).contiguous().view(batch, length, channels)
         output = self.projection(attended)
         if uses_quantized_activations(self.mode):
@@ -314,6 +431,10 @@ class TernaryGPT(nn.Module):
         projection = payload["projection"] if isinstance(payload, dict) else payload
         self.set_activation_projection(projection)
 
+    def set_capture_distillation(self, enabled: bool) -> None:
+        for block in self.blocks:
+            block.attention.capture_distillation = enabled
+
     @staticmethod
     def _initialize(module: nn.Module) -> None:
         if isinstance(module, TernaryLinear):
@@ -438,6 +559,9 @@ class TernaryGPT(nn.Module):
             "scheme": self.config.attention_quantization,
             "clip": self.config.attention_clip,
             "threshold": self.config.attention_threshold,
+            "qkv_quantization": self.config.qkv_quantization,
+            "rectification": self.config.attention_rectification,
+            "gate": self.config.attention_gate,
             "aggregate": aggregate,
             "layers": per_layer,
         }
@@ -452,5 +576,8 @@ class TernaryGPT(nn.Module):
                 "scheme": self.config.attention_quantization,
                 "clip": self.config.attention_clip,
                 "threshold": self.config.attention_threshold,
+                "qkv_quantization": self.config.qkv_quantization,
+                "rectification": self.config.attention_rectification,
+                "gate": self.config.attention_gate,
             },
         }

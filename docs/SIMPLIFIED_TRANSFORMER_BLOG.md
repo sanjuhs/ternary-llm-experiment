@@ -56,6 +56,25 @@ So a defensible “fully quantized Transformer” means that the large stored
 tensors and the inputs crossing expensive compute boundaries are low-bit. It
 does **not** mean that a 256-term sum is somehow stored in two bits.
 
+### Does an INT32 sum turn the next layer into FP32?
+
+No. Think of the accumulator as a temporary bucket, not the network's storage
+format.
+
+For one attention head in our model, a Q·K dot product adds 32 ternary products.
+The exact answer fits in about seven signed bits. A feed-forward dot product can
+add 1,024 products and needs about twelve. We use INT32 because existing hardware
+likes it and it is comfortably safe. A custom chip could use narrower buckets.
+
+After the sum, the chip applies a small scale, rounds the answer, and writes the
+next tensor back as ternary or four-bit. The next matrix multiplication therefore
+still receives low-bit operands. Nothing requires an FP32 activation to be saved
+between the two operations.
+
+Softmax needs a wider row sum and RMSNorm needs a wider sum of squares for the
+same reason. Those few temporary numbers do not erase the storage, bandwidth, and
+add/subtract/skip benefits of ternary weight and activation matrices.
+
 ## What our current numbers mean
 
 Our TinyStories model has about 5.8 million parameters. Starting from its
@@ -159,3 +178,29 @@ weights are already strong, four-bit activations are close, and two-bit
 attention looks experimentally reachable. Uniformly ternary activations across
 every layer remain the open part—and the training transition, more than the
 threshold alone, is likely to decide whether it works.
+
+## The experiment now running
+
+We have separated Q/K/V precision from residual precision. This matters because
+the earlier COAT A4 model quietly inherited four-bit Q, K, and V. The new pilot
+forces all three to ternary while keeping the residual stream at four bits long
+enough to isolate the attention problem.
+
+The combined student uses:
+
+- Q-ViT-style learned reshaping to make ternary Q and K codes more informative;
+- ternary Q·K with a wider integer sum;
+- an EXAQ/I-LLM-style four-code softmax input and four-entry integer lookup table;
+- either a two-bit attention route or BWTA-style binary route;
+- ternary V;
+- a learned binary per-head gate that can zero an update cleanly;
+- teacher matching on output logits, attention maps, and Q-Q/K-K relationships.
+
+The first post-training switch was intentionally bad: forced ternary Q/K/V raised
+loss from the 2.14 range to 3.60 on ten batches, and untrained Q-ViT rectification
+raised it further. That is useful evidence. It says the next question is whether
+the model can *learn* this representation through QAT and distillation—not whether
+we can flip a ternary switch after training.
+
+The exact result inventory, arithmetic contract, and gated rollout are in the
+[experiment ledger](EXPERIMENT_LEDGER_AND_ROADMAP.md).

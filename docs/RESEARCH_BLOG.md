@@ -418,6 +418,98 @@ model; none of the quantized arms exhibits a distinct collapse. The unedited
 outputs are in
 [the matched generation appendix](ATTENTION_GENERATION_SAMPLES.md).
 
+## The second attention architecture: ternary Q/K/V by construction
+
+The first attention experiment left one ambiguity: in `coat_a4` mode, Q, K, and V
+inherited the four-bit activation format. The routing was two-bit, but the
+operands that produced and consumed it were not ternary.
+
+The new implementation removes that ambiguity. Q, K, and V have an independent
+configuration and can be forced to scaled codes in `{-1, 0, +1}` regardless of
+the residual-stream format. Evaluation now reports the negative, zero, and
+positive code fraction for all three tensors at every layer.
+
+This turns the next experiment into an evidence ladder:
+
+1. keep the stable COAT A4 residual stream;
+2. force only Q/K/V to ternary;
+3. train learned Q/K rectification;
+4. add a quantization-friendly binary attention gate;
+5. replace the general exponential with a four-entry integer lookup table;
+6. reduce the normalized route to two bits or one bit;
+7. use distillation before attempting a ternary residual stream again.
+
+### What comes from each paper
+
+[BWTA](https://arxiv.org/abs/2604.03957) supplies the closest attention
+dataflow—ternary Q/K/V, binary attention routes, smooth multistage degradation,
+magnitude alignment, and multiple teacher targets. Its LLM evidence is still
+partial: it quantizes the 30% least-sensitive layers rather than the entire
+network.
+
+[EXAQ](https://openreview.net/forum?id=AuJ6gDjcZK) motivates a two-bit
+max-shifted softmax input and a four-entry exponential table. Our reference
+stores Q15 integer numerators, adds an integer row denominator, and uses ordinary
+softmax only as the straight-through backward surrogate during QAT.
+
+[I-LLM](https://arxiv.org/abs/2405.17849) confirms that nonlinear layers do not
+need to return to floating point between operations. Its DI-MatMul,
+DI-ClippedSoftmax, shift-based exponential, and integer normalization demonstrate
+an integer-only W4A4 pipeline. Its nonlinear activation target is eight bits, so
+it is not proof of a fully ternary pipeline.
+
+[Q-ViT](https://arxiv.org/abs/2210.06707) supplies the repair mechanism for the
+most fragile area. Learned affine rectification follows per-head Q/K
+standardization. The student can also match a teacher's sampled Q-Q and K-K
+similarity matrices, preserving relational structure without demanding identical
+ternary coordinates.
+
+[Quantizable
+Transformers](https://arxiv.org/abs/2306.12929) explains the gate. Some attention
+heads create extreme logits because softmax gives them no clean way to produce a
+no-update. A small per-head, per-token gate can nullify the attention branch
+directly. Our inference gate uses ternary operands and emits a binary keep/zero
+code; its sigmoid is a training surrogate and can become a fixed-point lookup on
+an ASIC.
+
+### A wider accumulator is not a float fallback
+
+A length-32 ternary Q·K reduction has exact outputs from -32 to +32 and needs
+about seven signed bits. The width-256 and width-1,024 reductions in this model
+need about ten and twelve signed bits. INT32 is a convenient general-purpose
+container, not the precision of the next activation.
+
+The accumulator is followed immediately by a fixed-point scale, rounding, and a
+ternary/INT4 write. Softmax similarly uses a wider integer denominator, and
+RMSNorm uses a wider integer sum of squares. These temporary reductions are
+compatible with a model whose large stored operands and boundary tensors remain
+low-bit.
+
+### The first forced-QKV screen
+
+Post-training conversion is severe:
+
+| Treatment on the existing 2-bit-route checkpoint | 10-batch loss | Perplexity |
+|---|---:|---:|
+| Ternary Q/K/V, otherwise unchanged | 3.5965 | 36.47 |
+| Untrained Q-ViT rectification + ternary Q/K/V | 4.1656 | 64.43 |
+| Rectified ternary Q/K/V + Q15 score lookup, clip 6 | 4.1938 | 66.28 |
+| Same + two-bit route, clip 6 | 3.9111 | 49.95 |
+| Same + binary route, clip 6 | 4.5143 | 91.31 |
+
+Tightening the score clip from six to three made the integer table less steep.
+Without rectification, the two-bit route result improved from the 3.9 range to
+**3.3565**, and its route codes used three levels rather than collapsing to only
+zero and three. Untrained rectification remained worse at 4.0143.
+
+This rejects a simple checkpoint switch. It does not reject the architecture:
+the Q-ViT parameters and binary gates have not learned anything yet. The
+750-step GPU pilot therefore compares plain ternary-QKV QAT,
+rectification-plus-gating QAT, and the full teacher-distilled integer-table arm.
+The experiment is specified in
+[`configs/gated_attention_pilot.toml`](../configs/gated_attention_pilot.toml) and
+[`scripts/remote_gated_attention_pilot.sh`](../scripts/remote_gated_attention_pilot.sh).
+
 ## Training plan for a strict low-bit Transformer
 
 The results now support a staged plan rather than another direct A16-to-ternary

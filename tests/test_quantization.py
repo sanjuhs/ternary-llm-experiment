@@ -1,6 +1,7 @@
 import torch
 
 from ternary_llm.quantization import (
+    integer_softmax_from_int2_codes,
     population_ternary_codes,
     quantize_activation_a4,
     quantize_attention_probabilities_binary,
@@ -77,3 +78,20 @@ def test_binary_attention_keeps_at_least_the_maximum_route() -> None:
     assert codes.sum().item() == 1
     assert quantized.argmax(dim=-1).item() == 3
     assert torch.allclose(quantized.sum(dim=-1), torch.ones(1, 1, 1))
+
+
+def test_integer_softmax_uses_integer_lut_and_preserves_gradients() -> None:
+    scores = torch.tensor([[[[0.0, -2.0, -4.0, -6.0]]]], requires_grad=True)
+    codes = torch.tensor([[[[0.0, -1.0, -2.0, -3.0]]]])
+    valid = torch.ones(1, 1, 1, 4, dtype=torch.bool)
+    probabilities, numerators = integer_softmax_from_int2_codes(
+        scores,
+        codes,
+        valid,
+        clip=6.0,
+    )
+
+    assert torch.all(numerators == numerators.round())
+    assert torch.allclose(probabilities.sum(dim=-1), torch.ones(1, 1, 1))
+    probabilities[..., 0].sum().backward()
+    assert scores.grad is not None

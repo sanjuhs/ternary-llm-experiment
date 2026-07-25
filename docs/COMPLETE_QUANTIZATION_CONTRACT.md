@@ -10,7 +10,7 @@ implementable definition.
 |---|---:|---:|
 | Embedding and linear weights | ternary, packed in 2 bits | ternary fake quantization; packed export exists |
 | Residual-stream activations | ternary or INT4 | COAT/Hadamard ternary and A4 variants |
-| Q, K, and V operands | ternary or INT4 | inherited from the activation mode |
+| Q, K, and V operands | ternary | independently forced by `qkv_quantization = "ternary"` |
 | Softmax input | four codes (2 bits) | `score_int2` |
 | Normalized attention routes | four codes or one bit | `prob_int2`, `prob_binary` |
 | KV cache | same low-bit format as K/V | planned runtime experiment |
@@ -32,6 +32,13 @@ This is not an exception invented for this project. Integer accelerators
 normally multiply low-bit operands into wide accumulators and requantize at the
 next boundary. The meaningful systems claim is that large stored tensors and
 matrix-multiply operands are low-bit—not that every temporary scalar is.
+
+An INT32 accumulator does not force FP32 output. The accumulator is immediately
+combined with fixed-point or power-of-two scales, rounded, clamped, and stored at
+the next ternary or INT4 boundary. In this model, Q·K needs about seven signed
+bits, width-256 linear reductions about ten, and width-1,024 feed-forward
+reductions about twelve. INT32 is a convenient implementation container, not the
+minimum ASIC width.
 
 ## Matched attention experiment
 
