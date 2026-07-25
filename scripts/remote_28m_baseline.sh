@@ -5,11 +5,23 @@ cd /workspace/ternary-llm-experiment
 export UV_PROJECT_ENVIRONMENT=/opt/ternary-llm-venv
 export UV_LINK_MODE=copy
 
+p3_seed="$(
+  uv run python -c '
+import json
+from pathlib import Path
+base = Path("artifacts/residual-refinement-pilot")
+candidates = ["hadamard-ternary-p3", "hadamard-ternary-p3-long"]
+def final_loss(name):
+    rows = [json.loads(line) for line in (base / name / "metrics.jsonl").read_text().splitlines()]
+    return [row["loss"] for row in rows if row.get("type") == "validation"][-1]
+print(base / min(candidates, key=final_loss) / "checkpoint.pt")
+'
+)"
+
 uv run ternary-train \
   --config configs/residual_refinement_pilot.toml \
   --mode hadamard_progressive \
-  --init-from \
-    artifacts/residual-refinement-pilot/hadamard-ternary-p3-long/checkpoint.pt \
+  --init-from "${p3_seed}" \
   --teacher-checkpoint artifacts/attention-pilot/prob-int2/checkpoint.pt \
   --run-name hadamard-late-p3-mixed \
   --activation-encoding residual_ternary \
@@ -20,8 +32,7 @@ uv run ternary-train \
 uv run ternary-train \
   --config configs/residual_refinement_pilot.toml \
   --mode hadamard_progressive \
-  --init-from \
-    artifacts/residual-refinement-pilot/hadamard-ternary-p3-long/checkpoint.pt \
+  --init-from "${p3_seed}" \
   --teacher-checkpoint artifacts/attention-pilot/prob-int2/checkpoint.pt \
   --run-name hadamard-nmse-p3-mixed \
   --activation-encoding residual_ternary \
@@ -32,8 +43,7 @@ uv run ternary-train \
 uv run ternary-train \
   --config configs/residual_refinement_pilot.toml \
   --mode hadamard_progressive \
-  --init-from \
-    artifacts/residual-refinement-pilot/hadamard-ternary-p3-long/checkpoint.pt \
+  --init-from "${p3_seed}" \
   --teacher-checkpoint artifacts/attention-pilot/prob-int2/checkpoint.pt \
   --run-name hadamard-ternary-p3-relu-harden \
   --activation-encoding residual_ternary \
