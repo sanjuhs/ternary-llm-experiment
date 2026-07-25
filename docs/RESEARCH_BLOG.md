@@ -723,3 +723,36 @@ improve the two binary planes with block reconstruction, groupwise fixed-point
 scales, and layer sensitivity training. For quality with ternary operators,
 allow additional ternary planes or expanded ternary factors and measure the
 extra storage and additions explicitly.
+
+## Residual refinement: the first matched result
+
+We implemented the R2Q-style idea at activation boundaries and evaluated six
+equal-budget arms. Two binary planes are exactly two code bits per activation
+scalar. Ternary planes keep every matrix operand in `-1/0/+1`, but ordinarily
+occupy two physical bits per plane.
+
+| Projection | Activation planes | Physical bits | Loss after QAT | Residual normalized MSE |
+|---|---|---:|---:|---:|
+| Learned COAT | 2 binary | 2 | 4.339853 | 12.62% |
+| Fixed Hadamard | 2 binary | 2 | **4.332306** | 12.47% |
+| Learned COAT | 2 ternary | 4 | 3.295858 | 4.30% |
+| Fixed Hadamard | 2 ternary | 4 | **3.288210** | 4.34% |
+| Learned COAT | 3 ternary | 6 | 2.664104 | 1.66% |
+| Fixed Hadamard | 3 ternary | 6 | **2.661332** | 1.68% |
+
+The fixed Hadamard transform slightly beat learned COAT after training in every
+matched row. The differences are small, but their direction is consistent and
+valuable: we can retain an add/subtract-only transform rather than paying for a
+dense learned rotation.
+
+The dominant variable is representation error. Reducing residual error from
+about 12.5% to 4.3% and 1.7% moves loss from 4.33 to 3.29 and 2.66. The
+three-plane model improves the old one-code result by 2.44 loss, yet remains
+behind the 2.1126 A4 control and costs six physical code bits. It is therefore
+the best ternary-operator result, not the best storage result.
+
+The next controlled runs extend both survivors, compare two equal-storage
+layer allocations, harden the best graph from GELU to ReLU, and then repeat the
+ladder on a 27.4M-parameter model trained over the full 488M-token corpus. That
+last control is essential: quantization cannot be blamed for a target that the
+float teacher itself never reached.
