@@ -17,10 +17,23 @@ uv run ternary-train \
   --activation-planes-by-layer 2 2 2 3 3 3 \
   --max-steps 2500
 
+uv run ternary-train \
+  --config configs/residual_refinement_pilot.toml \
+  --mode hadamard_progressive \
+  --init-from \
+    artifacts/residual-refinement-pilot/hadamard-ternary-p3-long/checkpoint.pt \
+  --teacher-checkpoint artifacts/attention-pilot/prob-int2/checkpoint.pt \
+  --run-name hadamard-ternary-p3-relu-harden \
+  --activation-encoding residual_ternary \
+  --activation-planes 3 \
+  --feed-forward-activation relu \
+  --max-steps 1500
+
 for run_name in \
   hadamard-binary-p2-long \
   hadamard-ternary-p3-long \
-  hadamard-late-p3-mixed
+  hadamard-late-p3-mixed \
+  hadamard-ternary-p3-relu-harden
 do
   run_dir="artifacts/residual-refinement-pilot/${run_name}"
   uv run ternary-evaluate \
@@ -29,6 +42,27 @@ do
     --device cuda \
     --sequential \
     > "${run_dir}/full-validation.json"
+  uv run ternary-diagnostics \
+    --checkpoint "${run_dir}/checkpoint.pt" \
+    --config configs/residual_refinement_pilot.toml \
+    --device cuda \
+    > "${run_dir}/diagnostics.json"
+  : > "${run_dir}/generations.txt"
+  for prompt in \
+    "Once upon a time" \
+    "Lily found a tiny red door" \
+    "Tom wanted to help his friend"
+  do
+    uv run ternary-generate \
+      --checkpoint "${run_dir}/checkpoint.pt" \
+      --tokenizer data/processed/tokenizer.json \
+      --prompt "${prompt}" \
+      --max-new-tokens 120 \
+      --temperature 0.8 \
+      --top-k 50 \
+      --device cuda \
+      >> "${run_dir}/generations.txt"
+  done
 done
 
 config="configs/tinystories_28m.toml"

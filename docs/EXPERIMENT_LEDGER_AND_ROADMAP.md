@@ -383,8 +383,8 @@ quality gate.
 The first, second, and single-plane fifth items have now been tested. The next
 best-controlled experiment is a **multi-plane ternary residual**:
 
-1. represent a five-level residual with two weighted ternary planes;
-2. represent a seven-level residual with three weighted ternary planes;
+1. represent each residual with two separately scaled ternary planes;
+2. represent each residual with three separately scaled ternary planes;
 3. constrain plane scales per channel to fixed-point or powers of two;
 4. reconstruct each block against the A4 teacher before end-to-end QAT;
 5. compare the result with matched INT3 and A4 controls.

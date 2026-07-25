@@ -584,13 +584,15 @@ insufficient residual-channel capacity, not a broken attention implementation.
 Another long run at three levels may shave the number down, but the last 1,500
 steps improved only 0.0435.
 
-The most informative next test is two- and three-plane ternary residuals. Two
-ternary planes can express a five-level signal; three can express seven levels.
-Every matrix operand remains ternary and an ASIC still uses add/subtract/skip
-operations, while the residual stream retains more information. The tradeoff is
-honest: it is no longer one 1.58-bit code per scalar. We will compare those arms
-against matched INT3 and A4 controls and train each block to reconstruct its
-teacher before end-to-end fine-tuning.
+The most informative next test is two- and three-plane ternary residuals. With
+one shared scale, two planes give five summed levels and three give seven. Our
+residual-refinement variant fits a separate scale to each plane, so it can form
+up to \(3^p\) combinations from \(p\) ternary codes. Every matrix operand remains
+ternary and an ASIC still uses add/subtract/skip operations, while the residual
+stream retains more information. The tradeoff is honest: it is no longer one
+1.58-bit code per scalar. We will compare those arms against matched INT3 and A4
+controls and train each block to reconstruct its teacher before end-to-end
+fine-tuning.
 
 Unedited output is in
 [`FULLY_TERNARY_GENERATION_SAMPLES.md`](FULLY_TERNARY_GENERATION_SAMPLES.md).
