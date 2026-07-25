@@ -16,6 +16,7 @@ import torch.nn.functional as F
 from tokenizers import Tokenizer
 
 from ternary_llm.config import (
+    VALID_ACTIVATION_ENCODINGS,
     VALID_ATTENTION_GATES,
     VALID_ATTENTION_QUANTIZATIONS,
     VALID_ATTENTION_RECTIFICATIONS,
@@ -250,9 +251,13 @@ def train(
     train_stream = TokenStream(config.data.train_bin, config.model.context_length)
     validation_stream = TokenStream(config.data.validation_bin, config.model.context_length)
     model = TernaryGPT(config.model, config.mode).to(device)
+    if projection is not None and config.mode.startswith("hadamard_"):
+        raise ValueError("a calibrated projection cannot be combined with a fixed Hadamard mode")
     if init_from is not None:
         initial = torch.load(init_from, map_location=device, weights_only=False)
         model.load_state_dict(initial["model"], strict=False)
+        if config.mode.startswith("hadamard_"):
+            model.reset_hadamard_projection()
     if projection is not None:
         model.load_activation_projection(str(projection))
     teacher: TernaryGPT | None = None
@@ -279,6 +284,8 @@ def train(
             teacher_state["config"]["mode"],
         ).to(device)
         teacher.load_state_dict(teacher_state["model"], strict=False)
+        if teacher_state["config"]["mode"].startswith("hadamard_"):
+            teacher.reset_hadamard_projection()
         if projection is not None:
             teacher.load_activation_projection(str(projection))
         teacher.eval()
@@ -451,6 +458,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--population-lanes", type=int)
     parser.add_argument("--activation-levels", type=int)
+    parser.add_argument("--activation-encoding", choices=VALID_ACTIVATION_ENCODINGS)
+    parser.add_argument("--activation-planes", type=int)
     parser.add_argument("--residual-scale", type=float)
     parser.add_argument(
         "--attention-quantization",
@@ -542,6 +551,16 @@ def main() -> None:
         config = replace(
             config,
             model=replace(config.model, activation_levels=args.activation_levels),
+        )
+    if args.activation_encoding:
+        config = replace(
+            config,
+            model=replace(config.model, activation_encoding=args.activation_encoding),
+        )
+    if args.activation_planes is not None:
+        config = replace(
+            config,
+            model=replace(config.model, activation_planes=args.activation_planes),
         )
     if args.residual_scale:
         config = replace(

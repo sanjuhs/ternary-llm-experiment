@@ -38,6 +38,13 @@ VALID_ATTENTION_GATES: tuple[AttentionGate, ...] = ("none", "sigmoid", "binary")
 FeedForwardActivation = Literal["gelu", "relu"]
 VALID_FEED_FORWARD_ACTIVATIONS: tuple[FeedForwardActivation, ...] = ("gelu", "relu")
 
+ActivationEncoding = Literal["uniform", "residual_binary", "residual_ternary"]
+VALID_ACTIVATION_ENCODINGS: tuple[ActivationEncoding, ...] = (
+    "uniform",
+    "residual_binary",
+    "residual_ternary",
+)
+
 Mode = Literal[
     "float",
     "ternary_weights",
@@ -49,6 +56,7 @@ Mode = Literal[
     "hadamard_ternary",
     "coat_ternary",
     "coat_progressive",
+    "hadamard_progressive",
 ]
 VALID_MODES: tuple[Mode, ...] = (
     "float",
@@ -61,6 +69,7 @@ VALID_MODES: tuple[Mode, ...] = (
     "hadamard_ternary",
     "coat_ternary",
     "coat_progressive",
+    "hadamard_progressive",
 )
 
 
@@ -75,6 +84,8 @@ class ModelConfig:
     dropout: float = 0.0
     activation_threshold: float = 0.5
     activation_levels: int = 19
+    activation_encoding: ActivationEncoding = "uniform"
+    activation_planes: int = 1
     weight_threshold: float = 0.5
     population_lanes: int = 1
     residual_scale: float = 1.0
@@ -104,6 +115,13 @@ class ModelConfig:
             raise ValueError("ternary thresholds must be positive")
         if self.activation_levels < 3 or self.activation_levels % 2 == 0:
             raise ValueError("activation_levels must be an odd integer of at least 3")
+        if self.activation_encoding not in VALID_ACTIVATION_ENCODINGS:
+            raise ValueError(
+                "activation_encoding must be one of "
+                f"{VALID_ACTIVATION_ENCODINGS}, got {self.activation_encoding!r}"
+            )
+        if self.activation_planes < 1:
+            raise ValueError("activation_planes must be positive")
         if self.population_lanes < 1:
             raise ValueError("population_lanes must be positive")
         if self.residual_scale <= 0:

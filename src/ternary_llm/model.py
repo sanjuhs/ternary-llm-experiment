@@ -17,6 +17,7 @@ from ternary_llm.quantization import (
     quantize_attention,
     quantize_projected_activation,
     requires_coat_calibration,
+    residual_refinement_activation_codes,
     ternarize_activation,
     ternarize_weight,
     ternary_activation_codes,
@@ -36,6 +37,8 @@ class TernaryLinear(nn.Module):
         weight_threshold: float,
         activation_threshold: float,
         activation_levels: int,
+        activation_encoding: str,
+        activation_planes: int,
         population_lanes: int,
     ) -> None:
         super().__init__()
@@ -44,6 +47,8 @@ class TernaryLinear(nn.Module):
         self.weight_threshold = weight_threshold
         self.activation_threshold = activation_threshold
         self.activation_levels = activation_levels
+        self.activation_encoding = activation_encoding
+        self.activation_planes = activation_planes
         self.population_lanes = population_lanes
         nn.init.normal_(self.weight, mean=0.0, std=0.02)
 
@@ -55,6 +60,8 @@ class TernaryLinear(nn.Module):
                 self.activation_threshold,
                 lanes=self.population_lanes,
                 levels=self.activation_levels,
+                encoding=self.activation_encoding,
+                planes=self.activation_planes,
             )
         weight = self.weight
         if uses_ternary_weights(self.mode):
@@ -71,6 +78,8 @@ class TernaryRMSNorm(nn.Module):
         weight_threshold: float,
         activation_threshold: float,
         activation_levels: int,
+        activation_encoding: str,
+        activation_planes: int,
         population_lanes: int,
         eps: float = 1e-5,
     ) -> None:
@@ -80,6 +89,8 @@ class TernaryRMSNorm(nn.Module):
         self.weight_threshold = weight_threshold
         self.activation_threshold = activation_threshold
         self.activation_levels = activation_levels
+        self.activation_encoding = activation_encoding
+        self.activation_planes = activation_planes
         self.population_lanes = population_lanes
         self.eps = eps
 
@@ -96,6 +107,8 @@ class TernaryRMSNorm(nn.Module):
                 self.activation_threshold,
                 lanes=self.population_lanes,
                 levels=self.activation_levels,
+                encoding=self.activation_encoding,
+                planes=self.activation_planes,
             )
         return output
 
@@ -111,6 +124,8 @@ class CausalSelfAttention(nn.Module):
             "weight_threshold": config.weight_threshold,
             "activation_threshold": config.activation_threshold,
             "activation_levels": config.activation_levels,
+            "activation_encoding": config.activation_encoding,
+            "activation_planes": config.activation_planes,
             "population_lanes": config.population_lanes if mode == "population_ternary" else 1,
         }
         self.qkv = TernaryLinear(config.d_model, 3 * config.d_model, **linear_args)
@@ -119,6 +134,8 @@ class CausalSelfAttention(nn.Module):
         self.weight_threshold = config.weight_threshold
         self.activation_threshold = config.activation_threshold
         self.activation_levels = config.activation_levels
+        self.activation_encoding = config.activation_encoding
+        self.activation_planes = config.activation_planes
         self.population_lanes = config.population_lanes if mode == "population_ternary" else 1
         self.attention_quantization = config.attention_quantization
         self.attention_clip = config.attention_clip
@@ -198,6 +215,8 @@ class CausalSelfAttention(nn.Module):
                 self.activation_threshold,
                 lanes=self.population_lanes,
                 levels=self.activation_levels,
+                encoding=self.activation_encoding,
+                planes=self.activation_planes,
             )
             k = quantize_activation(
                 k,
@@ -205,6 +224,8 @@ class CausalSelfAttention(nn.Module):
                 self.activation_threshold,
                 lanes=self.population_lanes,
                 levels=self.activation_levels,
+                encoding=self.activation_encoding,
+                planes=self.activation_planes,
             )
             v = quantize_activation(
                 v,
@@ -212,6 +233,8 @@ class CausalSelfAttention(nn.Module):
                 self.activation_threshold,
                 lanes=self.population_lanes,
                 levels=self.activation_levels,
+                encoding=self.activation_encoding,
+                planes=self.activation_planes,
             )
         return q, k, v, code_tensors
 
@@ -333,6 +356,8 @@ class CausalSelfAttention(nn.Module):
                 self.activation_threshold,
                 lanes=self.population_lanes,
                 levels=self.activation_levels,
+                encoding=self.activation_encoding,
+                planes=self.activation_planes,
             )
         return output
 
@@ -346,6 +371,8 @@ class FeedForward(nn.Module):
             "weight_threshold": config.weight_threshold,
             "activation_threshold": config.activation_threshold,
             "activation_levels": config.activation_levels,
+            "activation_encoding": config.activation_encoding,
+            "activation_planes": config.activation_planes,
             "population_lanes": config.population_lanes if mode == "population_ternary" else 1,
         }
         self.up = TernaryLinear(config.d_model, hidden_size, **linear_args)
@@ -354,6 +381,8 @@ class FeedForward(nn.Module):
         self.mode = mode
         self.activation_threshold = config.activation_threshold
         self.activation_levels = config.activation_levels
+        self.activation_encoding = config.activation_encoding
+        self.activation_planes = config.activation_planes
         self.population_lanes = config.population_lanes if mode == "population_ternary" else 1
         self.feed_forward_activation = config.feed_forward_activation
 
@@ -370,6 +399,8 @@ class FeedForward(nn.Module):
                 self.activation_threshold,
                 lanes=self.population_lanes,
                 levels=self.activation_levels,
+                encoding=self.activation_encoding,
+                planes=self.activation_planes,
             )
         output = self.down(hidden)
         output = self.dropout(output)
@@ -380,6 +411,8 @@ class FeedForward(nn.Module):
                 self.activation_threshold,
                 lanes=self.population_lanes,
                 levels=self.activation_levels,
+                encoding=self.activation_encoding,
+                planes=self.activation_planes,
             )
         return output
 
@@ -392,6 +425,8 @@ class TransformerBlock(nn.Module):
             "weight_threshold": config.weight_threshold,
             "activation_threshold": config.activation_threshold,
             "activation_levels": config.activation_levels,
+            "activation_encoding": config.activation_encoding,
+            "activation_planes": config.activation_planes,
             "population_lanes": config.population_lanes if mode == "population_ternary" else 1,
         }
         self.attention_norm = TernaryRMSNorm(config.d_model, **norm_args)
@@ -401,6 +436,8 @@ class TransformerBlock(nn.Module):
         self.mode = mode
         self.activation_threshold = config.activation_threshold
         self.activation_levels = config.activation_levels
+        self.activation_encoding = config.activation_encoding
+        self.activation_planes = config.activation_planes
         self.population_lanes = config.population_lanes if mode == "population_ternary" else 1
         self.residual_scale = config.residual_scale
         projection = normalized_hadamard(config.d_model)
@@ -427,27 +464,58 @@ class TransformerBlock(nn.Module):
         if requires_coat_calibration(self.mode) and not bool(self.coat_projection_ready):
             raise RuntimeError("COAT mode requires a calibrated activation projection")
         if uses_activation_projection(self.mode):
-            if self.mode == "coat_progressive" and not self.training:
+            if self.mode in {"coat_progressive", "hadamard_progressive"} and not self.training:
                 q = self.activation_projection.to(
                     device=tensor.device,
                     dtype=tensor.dtype,
                 )
-                codes, _ = progressive_activation_codes(
-                    tensor @ q,
-                    self.activation_levels,
-                    threshold=self.activation_threshold,
-                )
-                qmax = (self.activation_levels - 1) // 2
-                self.last_residual_stats = {
-                    "configured_levels": float(self.activation_levels),
-                    "used_levels": float(codes.unique().numel()),
-                    "zero_fraction": float(
-                        (codes == 0).to(torch.float32).mean().item()
-                    ),
-                    "saturation_fraction": float(
-                        (codes.abs() == qmax).to(torch.float32).mean().item()
-                    ),
-                }
+                rotated = tensor @ q
+                if self.activation_encoding == "uniform":
+                    codes, _ = progressive_activation_codes(
+                        rotated,
+                        self.activation_levels,
+                        threshold=self.activation_threshold,
+                    )
+                    qmax = (self.activation_levels - 1) // 2
+                    self.last_residual_stats = {
+                        "configured_levels": float(self.activation_levels),
+                        "used_levels": float(codes.unique().numel()),
+                        "zero_fraction": float(
+                            (codes == 0).to(torch.float32).mean().item()
+                        ),
+                        "saturation_fraction": float(
+                            (codes.abs() == qmax).to(torch.float32).mean().item()
+                        ),
+                    }
+                else:
+                    binary = self.activation_encoding == "residual_binary"
+                    codes, scales = residual_refinement_activation_codes(
+                        rotated,
+                        self.activation_planes,
+                        binary=binary,
+                        threshold=self.activation_threshold,
+                    )
+                    reconstructed = (codes * scales).sum(dim=-1)
+                    error = (rotated - reconstructed).square().mean()
+                    energy = rotated.square().mean().clamp_min(1e-8)
+                    stats = {
+                        "planes": float(self.activation_planes),
+                        "logical_bits_per_scalar": float(
+                            self.activation_planes
+                            if binary
+                            else self.activation_planes * math.log2(3.0)
+                        ),
+                        "normalized_mse": float((error / energy).item()),
+                        "zero_fraction": float(
+                            (codes == 0).to(torch.float32).mean().item()
+                        ),
+                    }
+                    for plane in range(self.activation_planes):
+                        plane_codes = codes[..., plane]
+                        stats[f"plane_{plane}_zero_fraction"] = float(
+                            (plane_codes == 0).to(torch.float32).mean().item()
+                        )
+                    self.last_residual_stats = stats
             return quantize_projected_activation(
                 tensor,
                 self.mode,
@@ -455,6 +523,8 @@ class TransformerBlock(nn.Module):
                 self.activation_projection,
                 lanes=self.population_lanes,
                 levels=self.activation_levels,
+                encoding=self.activation_encoding,
+                planes=self.activation_planes,
             )
         return quantize_activation(
             tensor,
@@ -462,6 +532,8 @@ class TransformerBlock(nn.Module):
             self.activation_threshold,
             lanes=self.population_lanes,
             levels=self.activation_levels,
+            encoding=self.activation_encoding,
+            planes=self.activation_planes,
         )
 
     def forward(self, inputs: Tensor) -> Tensor:
@@ -494,6 +566,8 @@ class TernaryGPT(nn.Module):
             weight_threshold=config.weight_threshold,
             activation_threshold=config.activation_threshold,
             activation_levels=config.activation_levels,
+            activation_encoding=config.activation_encoding,
+            activation_planes=config.activation_planes,
             population_lanes=(
                 config.population_lanes if mode == "population_ternary" else 1
             ),
@@ -505,6 +579,10 @@ class TernaryGPT(nn.Module):
     def set_activation_projection(self, projection: Tensor) -> None:
         for block in self.blocks:
             block.set_activation_projection(projection)
+
+    def reset_hadamard_projection(self) -> None:
+        projection = normalized_hadamard(self.config.d_model)
+        self.set_activation_projection(projection)
 
     def load_activation_projection(self, path: str) -> None:
         payload = torch.load(path, map_location="cpu", weights_only=False)
@@ -556,6 +634,8 @@ class TernaryGPT(nn.Module):
                     self.config.population_lanes if self.mode == "population_ternary" else 1
                 ),
                 levels=self.config.activation_levels,
+                encoding=self.config.activation_encoding,
+                planes=self.config.activation_planes,
             )
 
         for block in self.blocks:
@@ -573,6 +653,8 @@ class TernaryGPT(nn.Module):
                     self.config.population_lanes if self.mode == "population_ternary" else 1
                 ),
                 levels=self.config.activation_levels,
+                encoding=self.config.activation_encoding,
+                planes=self.config.activation_planes,
             )
         logits = F.linear(hidden, self._embedding_weight())
         loss = None
@@ -680,7 +762,9 @@ class TernaryGPT(nn.Module):
             },
             "residual": {
                 "levels": self.config.activation_levels
-                if self.mode == "coat_progressive"
+                if self.mode in {"coat_progressive", "hadamard_progressive"}
                 else None,
+                "encoding": self.config.activation_encoding,
+                "planes": self.config.activation_planes,
             },
         }

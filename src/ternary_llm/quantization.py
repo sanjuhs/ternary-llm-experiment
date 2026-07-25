@@ -5,7 +5,7 @@ from collections.abc import Sequence
 import torch
 from torch import Tensor
 
-from ternary_llm.config import AttentionQuantization, Mode
+from ternary_llm.config import ActivationEncoding, AttentionQuantization, Mode
 
 
 def uses_ternary_weights(mode: Mode) -> bool:
@@ -18,6 +18,7 @@ def uses_ternary_weights(mode: Mode) -> bool:
         "hadamard_ternary",
         "coat_ternary",
         "coat_progressive",
+        "hadamard_progressive",
     }
 
 
@@ -29,6 +30,7 @@ def uses_ternary_activations(mode: Mode) -> bool:
         "hadamard_ternary",
         "coat_ternary",
         "coat_progressive",
+        "hadamard_progressive",
     }
 
 
@@ -47,6 +49,7 @@ def uses_activation_projection(mode: Mode) -> bool:
         "hadamard_ternary",
         "coat_ternary",
         "coat_progressive",
+        "hadamard_progressive",
     }
 
 
@@ -150,6 +153,64 @@ def quantize_activation_levels(
         eps=eps,
     )
     dequantized = codes * aligned_scale
+    return tensor + (dequantized - tensor).detach()
+
+
+def residual_refinement_activation_codes(
+    tensor: Tensor,
+    planes: int,
+    *,
+    binary: bool,
+    threshold: float = 0.5,
+    eps: float = 1e-5,
+) -> tuple[Tensor, Tensor]:
+    """Greedily encode an activation as scaled binary or ternary residual planes.
+
+    Each plane is fitted to the residual left by earlier planes. Binary planes
+    use exactly one bit per scalar and are a subset of ternary arithmetic.
+    Ternary planes add an explicit zero code. The returned scales are
+    least-squares-optimal per vector for the selected codes.
+    """
+    if planes < 1:
+        raise ValueError("planes must be positive")
+    residual = tensor.detach()
+    plane_codes = []
+    plane_scales = []
+    for _ in range(planes):
+        initial_scale = _scale(residual, -1, eps=eps)
+        normalized = residual / initial_scale
+        if binary:
+            codes = torch.where(
+                normalized >= 0,
+                torch.ones_like(normalized),
+                -torch.ones_like(normalized),
+            )
+        else:
+            codes = ternary_code(normalized, threshold)
+        denominator = codes.square().sum(dim=-1, keepdim=True).clamp_min(1.0)
+        scale = (residual * codes).sum(dim=-1, keepdim=True) / denominator
+        scale = scale.abs().clamp_min(eps)
+        residual = residual - codes * scale
+        plane_codes.append(codes)
+        plane_scales.append(scale)
+    return torch.stack(plane_codes, dim=-1), torch.stack(plane_scales, dim=-1)
+
+
+def quantize_activation_residual_planes(
+    tensor: Tensor,
+    planes: int,
+    *,
+    binary: bool,
+    threshold: float = 0.5,
+) -> Tensor:
+    """Fake-quantize an activation to a sum of scaled low-bit planes."""
+    codes, scales = residual_refinement_activation_codes(
+        tensor,
+        planes,
+        binary=binary,
+        threshold=threshold,
+    )
+    dequantized = (codes * scales).sum(dim=-1)
     return tensor + (dequantized - tensor).detach()
 
 
@@ -338,8 +399,24 @@ def quantize_activation(
     *,
     lanes: int,
     levels: int = 19,
+    encoding: ActivationEncoding = "uniform",
+    planes: int = 1,
 ) -> Tensor:
-    if mode == "coat_progressive":
+    if mode in {"coat_progressive", "hadamard_progressive"}:
+        if encoding == "residual_binary":
+            return quantize_activation_residual_planes(
+                tensor,
+                planes,
+                binary=True,
+                threshold=threshold,
+            )
+        if encoding == "residual_ternary":
+            return quantize_activation_residual_planes(
+                tensor,
+                planes,
+                binary=False,
+                threshold=threshold,
+            )
         return quantize_activation_levels(tensor, levels, threshold=threshold)
     if uses_a4_activations(mode):
         return quantize_activation_a4(tensor)
@@ -356,10 +433,20 @@ def quantize_projected_activation(
     *,
     lanes: int,
     levels: int = 19,
+    encoding: ActivationEncoding = "uniform",
+    planes: int = 1,
 ) -> Tensor:
     """Encode in an orthogonal basis, then decode for the reference kernels."""
     if not uses_activation_projection(mode):
-        return quantize_activation(tensor, mode, threshold, lanes=lanes, levels=levels)
+        return quantize_activation(
+            tensor,
+            mode,
+            threshold,
+            lanes=lanes,
+            levels=levels,
+            encoding=encoding,
+            planes=planes,
+        )
     q = projection.to(device=tensor.device, dtype=tensor.dtype)
     rotated = tensor @ q
     quantized = quantize_activation(
@@ -368,6 +455,8 @@ def quantize_projected_activation(
         threshold,
         lanes=lanes,
         levels=levels,
+        encoding=encoding,
+        planes=planes,
     )
     return quantized @ q.T
 

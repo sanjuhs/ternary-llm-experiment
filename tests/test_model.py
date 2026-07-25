@@ -68,6 +68,33 @@ def test_population_mode_computes_loss_and_gradients(lanes: int) -> None:
     assert model.token_embedding.grad is not None
 
 
+@pytest.mark.parametrize("encoding", ["residual_binary", "residual_ternary"])
+def test_hadamard_residual_planes_compute_loss_gradients_and_stats(
+    encoding: str,
+) -> None:
+    config = ModelConfig(
+        vocab_size=300,
+        context_length=8,
+        d_model=16,
+        n_layers=1,
+        n_heads=2,
+        ff_multiplier=2,
+        activation_encoding=encoding,  # type: ignore[arg-type]
+        activation_planes=2,
+        qkv_quantization="ternary",
+    )
+    model = TernaryGPT(config, "hadamard_progressive").eval()
+    inputs = torch.randint(0, config.vocab_size, (2, config.context_length))
+    _, loss = model(inputs, inputs)
+
+    assert loss is not None and torch.isfinite(loss)
+    loss.backward()
+    assert model.token_embedding.grad is not None
+    stats = model.residual_stats()["aggregate"]
+    assert stats["planes"] == 2
+    assert stats["normalized_mse"] >= 0
+
+
 @pytest.mark.parametrize("scheme", VALID_ATTENTION_QUANTIZATIONS)
 def test_attention_quantization_schemes_compute_gradients(scheme: str) -> None:
     config = ModelConfig(

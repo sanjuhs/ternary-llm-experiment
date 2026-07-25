@@ -6,9 +6,11 @@ from ternary_llm.quantization import (
     progressive_activation_codes,
     quantize_activation_a4,
     quantize_activation_levels,
+    quantize_activation_residual_planes,
     quantize_attention_probabilities_binary,
     quantize_attention_probabilities_int2,
     quantize_attention_scores_int2,
+    residual_refinement_activation_codes,
     ternarize,
     ternarize_activation,
     ternary_code,
@@ -84,6 +86,40 @@ def test_progressive_high_level_stage_has_finer_reconstruction() -> None:
     error_19 = (level_19 - values).square().mean()
     error_7 = (level_7 - values).square().mean()
     assert error_19 < error_7
+
+
+def test_binary_residual_refinement_uses_exact_one_bit_planes() -> None:
+    values = torch.tensor([[-3.0, -1.1, -0.2, 0.0, 0.4, 1.2, 3.5]])
+    one_code, one_scale = residual_refinement_activation_codes(
+        values,
+        1,
+        binary=True,
+    )
+    two_codes, two_scales = residual_refinement_activation_codes(
+        values,
+        2,
+        binary=True,
+    )
+
+    assert set(two_codes.unique().tolist()) == {-1.0, 1.0}
+    assert two_codes.shape == (*values.shape, 2)
+    one_error = (values - (one_code * one_scale).sum(dim=-1)).square().mean()
+    two_error = (values - (two_codes * two_scales).sum(dim=-1)).square().mean()
+    assert two_error < one_error
+
+
+def test_ternary_residual_refinement_uses_sparse_planes_and_ste() -> None:
+    values = torch.tensor(
+        [[-3.0, -1.1, -0.2, 0.0, 0.4, 1.2, 3.5]],
+        requires_grad=True,
+    )
+    codes, _ = residual_refinement_activation_codes(values, 2, binary=False)
+    quantized = quantize_activation_residual_planes(values, 2, binary=False)
+
+    assert set(codes.unique().tolist()) <= {-1.0, 0.0, 1.0}
+    assert 0.0 in codes.unique().tolist()
+    quantized.sum().backward()
+    assert torch.equal(values.grad, torch.ones_like(values))
 
 
 def test_int2_attention_scores_use_four_codes_and_preserve_mask() -> None:

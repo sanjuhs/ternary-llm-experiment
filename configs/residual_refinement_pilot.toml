@@ -1,0 +1,51 @@
+seed = 17
+mode = "coat_progressive"
+device = "cuda"
+
+[model]
+vocab_size = 4096
+context_length = 256
+d_model = 256
+n_layers = 6
+n_heads = 8
+ff_multiplier = 4
+dropout = 0.0
+activation_threshold = 0.5
+activation_levels = 7
+activation_encoding = "residual_ternary"
+activation_planes = 2
+weight_threshold = 0.5
+attention_quantization = "score_lut_prob_int2"
+attention_clip = 3.0
+attention_threshold = 0.125
+qkv_quantization = "ternary"
+attention_rectification = "none"
+attention_gate = "none"
+attention_gate_initial = 0.9
+feed_forward_activation = "gelu"
+
+[data]
+train_bin = "data/processed/train.bin"
+validation_bin = "data/full/validation.bin"
+tokenizer = "data/processed/tokenizer.json"
+
+[train]
+batch_size = 32
+max_steps = 1500
+learning_rate = 0.00003
+min_learning_rate = 0.000003
+warmup_steps = 100
+weight_decay = 0.0
+grad_clip = 1.0
+eval_interval = 500
+eval_batches = 100
+checkpoint_interval = 500
+output_dir = "artifacts/residual-refinement-pilot"
+log_interval = 20
+precision = "bf16"
+logit_distillation_weight = 0.1
+attention_distillation_weight = 0.5
+qk_distillation_weight = 0.0
+hidden_distillation_weight = 1.0
+distillation_temperature = 1.0
+distillation_token_stride = 4
