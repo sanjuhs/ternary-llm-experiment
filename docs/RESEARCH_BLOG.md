@@ -756,3 +756,11 @@ layer allocations, harden the best graph from GELU to ReLU, and then repeat the
 ladder on a 27.4M-parameter model trained over the full 488M-token corpus. That
 last control is essential: quantization cannot be blamed for a target that the
 float teacher itself never reached.
+
+The extended exact-two-bit run is already complete. Another 5,000 QAT steps
+moved loss from 4.332306 to **4.258285**. The final 2,000 steps recovered only
+0.005699, establishing a practical plateau. The two-bit representation is
+stable and trainable, but its current per-token, two-plane lattice discards too
+much residual information. Groupwise fixed-point scales, block reconstruction,
+or a residual-free architecture are now better-founded changes than simply
+training the same graph longer.

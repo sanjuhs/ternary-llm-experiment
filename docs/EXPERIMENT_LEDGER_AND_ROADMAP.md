@@ -222,6 +222,12 @@ control and uses six physical activation bits. Longer exact-two-bit and
 three-plane runs, a layer-aware mixed allocation, and a ReLU hardening stage are
 running before the 27.4M-parameter capacity experiment.
 
+The exact-two-bit survivor has now completed 5,000 additional steps. It reached
+**4.258285** loss (perplexity **70.6887**), an improvement of 0.074021 over its
+short-run checkpoint. Only 0.005699 of that improvement occurred during the
+last 2,000 steps. This is a measured optimization plateau: more training with
+the same representation is not a credible route from 4.26 to the A4 range.
+
 ### Two-bit attention experiments
 
 | Attention representation after 500-step QAT | Loss | Perplexity |
