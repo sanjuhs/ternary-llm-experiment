@@ -14,7 +14,7 @@ ptq_results="${output}/post-training-level-screen.jsonl"
 mkdir -p "${output}"
 : > "${ptq_results}"
 
-for levels in 19 15 11 7 3; do
+for levels in 19 15 11 9 7 5 3; do
   {
     printf '{"activation_levels":%s,"result":' "${levels}"
     uv run ternary-evaluate \
@@ -33,7 +33,7 @@ for levels in 19 15 11 7 3; do
 done
 
 previous="${source_checkpoint}"
-for levels in 19 15 11 7 3; do
+for levels in 19 15 11 9 7 5 3; do
   run_name="levels-${levels}-gelu"
   uv run ternary-train \
     --config configs/fully_ternary_pilot.toml \

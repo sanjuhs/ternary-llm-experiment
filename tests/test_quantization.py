@@ -76,6 +76,16 @@ def test_progressive_three_level_endpoint_has_ternary_codes() -> None:
     assert set(codes.unique().tolist()) <= {-1.0, 0.0, 1.0}
 
 
+def test_progressive_high_level_stage_has_finer_reconstruction() -> None:
+    values = torch.linspace(-3.0, 3.0, 257).unsqueeze(0)
+    level_19 = quantize_activation_levels(values, 19)
+    level_7 = quantize_activation_levels(values, 7)
+
+    error_19 = (level_19 - values).square().mean()
+    error_7 = (level_7 - values).square().mean()
+    assert error_19 < error_7
+
+
 def test_int2_attention_scores_use_four_codes_and_preserve_mask() -> None:
     scores = torch.tensor([[[[1.0, 0.0, -2.0], [2.0, 1.0, 0.0], [0.0, -1.0, -4.0]]]])
     valid = torch.ones(3, 3, dtype=torch.bool).tril()

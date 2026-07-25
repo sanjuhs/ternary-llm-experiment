@@ -133,11 +133,13 @@ def quantize_activation_levels(
 ) -> Tensor:
     """Quantize per vector to a symmetric odd alphabet with magnitude alignment.
 
-    The integer code alphabet is ``[-qmax, ..., 0, ..., qmax]``. Codes are
-    selected relative to the vector's mean absolute magnitude, then the
-    dequantization scale is aligned so the quantized vector preserves the
-    original mean absolute magnitude. At three levels the codes are exactly
-    ternary. The forward path is quantized and the backward path is an STE.
+    The integer code alphabet is ``[-qmax, ..., 0, ..., qmax]``. The grid
+    resolution grows with ``sqrt(qmax)``: high-level stages obtain a finer step
+    and wider range, while reducing levels smoothly converges to the ordinary
+    ternary threshold. The dequantization scale is then aligned so the
+    quantized vector preserves the original mean absolute magnitude. At three
+    levels the codes are exactly ternary. The forward path is quantized and the
+    backward path is an STE.
     """
     if levels < 3 or levels % 2 == 0:
         raise ValueError("levels must be an odd integer of at least 3")
@@ -163,7 +165,8 @@ def progressive_activation_codes(
         raise ValueError("levels must be an odd integer of at least 3")
     qmax = (levels - 1) // 2
     magnitude = _scale(tensor, -1, eps=eps)
-    normalized = tensor.detach() / magnitude
+    resolution = qmax**0.5
+    normalized = tensor.detach() / magnitude * resolution
     if levels == 3:
         codes = ternary_code(normalized, threshold)
     else:
