@@ -379,6 +379,30 @@ TinyStories decoder and are now implemented as an ablation.
 
 ### Other recent architecture evidence
 
+The live 27.4M strict run revealed that clip 3 leaves probability code 2 unused:
+the integer LUT ratios map to probability codes `[0, 0, 1, 3]`, and the first
+diagnostic measured 79.62% zero routes. A follow-up clip-utilization refinement
+is therefore queued after the strict baseline:
+
+1. evaluate clips 1.5, 2.0, 2.5, and 3.0 on the same checkpoint and 200 batches;
+2. adapt clips 1.5, 2.0, and 2.5 for 2,000 matched steps each;
+3. select the lowest matched validation loss;
+4. refine the winner for 5,000 more steps;
+5. run exhaustive sequential validation, diagnostics, and fixed generations.
+
+Clip 2 has a specific representational advantage: its ideal LUT ratios reach
+all four probability codes `[0, 1, 2, 3]`. The sweep still allows the data to
+reject that theoretical advantage if a different clip produces lower loss.
+
+[PT2-LLM](https://openreview.net/forum?id=7QZanjCD6M) adds activation-aware
+ternary grid alignment and structural-similarity reordering for weights.
+[From Attention to Activation](https://openreview.net/forum?id=IjduZQK8gM)
+motivates an explicit no-update attention state, while
+[hyperspherical 4-bit Transformers](https://openreview.net/forum?id=tiqfxkYf1o)
+motivate bounded cosine-like scores. These are useful follow-up architecture
+hypotheses, not evidence that a two-bit language-model attention path already
+matches float loss.
+
 - [PackQViT](https://openreview.net/forum?id=N56hAiQvot) supports a fully
   four-bit vision path with integer-friendly nonlinear approximations. It
   strengthens the implementation case, but does not establish ternary language

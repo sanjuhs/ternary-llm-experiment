@@ -689,6 +689,30 @@ strongest lesson for this project is that later or sensitive blocks should
 receive more activation capacity. It still targets W1.58A4 rather than a
 uniformly ternary residual stream.
 
+[PT2-LLM](https://openreview.net/forum?id=7QZanjCD6M) is a complementary
+weight-only result. Its iterative ternary fitting, activation-aware grid
+alignment, and structural-similarity column reordering improve post-training
+ternarization without retraining. It strengthens the case for calibration-aware
+ternary centroids, but it does not quantize the persistent activation or
+attention boundaries and therefore cannot by itself establish our inference
+contract.
+
+[From Attention to Activation](https://openreview.net/forum?id=IjduZQK8gM)
+connects attention sinks and heavy-tailed hidden activations, and reports that a
+softmax-minus-one formulation plus an optimizer change sharply reduces both.
+This matters because our integer probability route already has an explicit zero
+code: a head can represent “no update” without manufacturing an extreme logit.
+The transferable hypothesis is architectural—make the zero-update state
+explicit before quantization—not that the paper has already demonstrated
+two-bit autoregressive attention.
+
+[Accurate 4-Bit Quantization with Hyperspherical
+Architecture](https://openreview.net/forum?id=tiqfxkYf1o) bounds attention and
+MLP error growth by normalizing activations and constraining weights so that
+dot products behave like bounded cosine similarities. Its evidence is at W4A4,
+but the bounded-score principle is directly testable in a future ternary arm
+and may reduce how much clipping the two-bit score codebook must absorb.
+
 [CAT-Q](https://arxiv.org/abs/2606.26650) improves post-training ternary weights
 with learnable modulation, softened ternarization, and sliding-layer
 reconstruction. Those ideas are useful for the weight-conversion stage, but the
@@ -717,6 +741,23 @@ and validation protocol differ from ours, so the raw perplexity is not a
 baseline target. Its relevant lessons are native quantization-aware training,
 learned layer scales, and greater sensitivity in boundary layers—not evidence
 that ternary residual activations already match float quality.
+
+### A live codebook-utilization finding
+
+The first 27.4M strict checkpoint exposed a subtle problem that a headline
+“two-bit” label hides. With attention clip 3, the integer exponential LUT is
+approximately `[exp(-3), exp(-2), exp(-1), 1]`. The following row-wise
+four-code probability quantizer maps those ratios to `[0, 0, 1, 3]`; probability
+code 2 is therefore unused. The measured step-2,000 diagnostic confirmed exactly
+that collapse and found 79.62% zero probability codes.
+
+This is still a two-bit storage field, but it is functionally a sparse
+three-level router. Clip 2 instead maps the ideal ratios to `[0, 1, 2, 3]`,
+making every code reachable. The new matched refinement stage screens clips
+1.5, 2.0, and 2.5, adapts each for the same token budget, selects on the same
+held-out batches, and exhaustively evaluates a longer refinement of the winner.
+It is a targeted test of codebook utilization, not an after-the-fact change to
+the already-running clip-3 baseline.
 
 Together, these papers suggest two honest follow-ups. For exact two-bit storage,
 improve the two binary planes with block reconstruction, groupwise fixed-point
