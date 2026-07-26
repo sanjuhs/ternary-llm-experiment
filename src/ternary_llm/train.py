@@ -18,6 +18,7 @@ from tokenizers import Tokenizer
 from ternary_llm.config import (
     VALID_ACTIVATION_ENCODINGS,
     VALID_ATTENTION_GATES,
+    VALID_ATTENTION_NORMALIZATIONS,
     VALID_ATTENTION_QUANTIZATIONS,
     VALID_ATTENTION_RECTIFICATIONS,
     VALID_FEED_FORWARD_ACTIVATIONS,
@@ -471,6 +472,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--attention-quantization",
         choices=VALID_ATTENTION_QUANTIZATIONS,
     )
+    parser.add_argument(
+        "--attention-normalization",
+        choices=VALID_ATTENTION_NORMALIZATIONS,
+    )
     parser.add_argument("--attention-clip", type=float)
     parser.add_argument("--attention-threshold", type=float)
     parser.add_argument("--qkv-quantization", choices=VALID_QKV_QUANTIZATIONS)
@@ -597,6 +602,8 @@ def main() -> None:
     model_overrides = {}
     if args.attention_quantization:
         model_overrides["attention_quantization"] = args.attention_quantization
+    if args.attention_normalization:
+        model_overrides["attention_normalization"] = args.attention_normalization
     if args.attention_clip is not None:
         model_overrides["attention_clip"] = args.attention_clip
     if args.attention_threshold is not None:

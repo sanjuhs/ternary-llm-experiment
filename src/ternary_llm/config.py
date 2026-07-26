@@ -26,6 +26,12 @@ VALID_ATTENTION_QUANTIZATIONS: tuple[AttentionQuantization, ...] = (
     "score_lut_prob_binary",
 )
 
+AttentionNormalization = Literal["softmax", "softmax1"]
+VALID_ATTENTION_NORMALIZATIONS: tuple[AttentionNormalization, ...] = (
+    "softmax",
+    "softmax1",
+)
+
 QKVQuantization = Literal["inherit", "ternary"]
 VALID_QKV_QUANTIZATIONS: tuple[QKVQuantization, ...] = ("inherit", "ternary")
 
@@ -97,6 +103,7 @@ class ModelConfig:
     population_lanes: int = 1
     residual_scale: float = 1.0
     attention_quantization: AttentionQuantization = "float"
+    attention_normalization: AttentionNormalization = "softmax"
     attention_clip: float = 6.0
     attention_threshold: float = 0.5
     qkv_quantization: QKVQuantization = "inherit"
@@ -148,6 +155,12 @@ class ModelConfig:
             raise ValueError(
                 "attention_quantization must be one of "
                 f"{VALID_ATTENTION_QUANTIZATIONS}, got {self.attention_quantization!r}"
+            )
+        if self.attention_normalization not in VALID_ATTENTION_NORMALIZATIONS:
+            raise ValueError(
+                "attention_normalization must be one of "
+                f"{VALID_ATTENTION_NORMALIZATIONS}, "
+                f"got {self.attention_normalization!r}"
             )
         if self.attention_clip <= 0:
             raise ValueError("attention_clip must be positive")

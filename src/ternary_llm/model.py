@@ -139,6 +139,7 @@ class CausalSelfAttention(nn.Module):
         self.activation_planes = config.activation_planes
         self.population_lanes = config.population_lanes if mode == "population_ternary" else 1
         self.attention_quantization = config.attention_quantization
+        self.attention_normalization = config.attention_normalization
         self.attention_clip = config.attention_clip
         self.attention_threshold = config.attention_threshold
         self.qkv_quantization = config.qkv_quantization
@@ -326,6 +327,7 @@ class CausalSelfAttention(nn.Module):
             scores,
             valid,
             scheme=self.attention_quantization,
+            normalization=self.attention_normalization,
             clip=self.attention_clip,
             threshold=self.attention_threshold,
         )
@@ -344,6 +346,12 @@ class CausalSelfAttention(nn.Module):
                 ).sum(dim=-1)
                 stats = {
                     "entropy": float(entropy.mean().item()),
+                    "attention_mass_mean": float(
+                        probabilities.sum(dim=-1).mean().item()
+                    ),
+                    "no_update_mass_mean": float(
+                        (1.0 - probabilities.sum(dim=-1)).mean().item()
+                    ),
                     "zero_fraction": float(
                         (
                             (probabilities == 0).to(torch.float32)
@@ -783,6 +791,7 @@ class TernaryGPT(nn.Module):
             }
         return {
             "scheme": self.config.attention_quantization,
+            "normalization": self.config.attention_normalization,
             "clip": self.config.attention_clip,
             "threshold": self.config.attention_threshold,
             "qkv_quantization": self.config.qkv_quantization,
@@ -815,6 +824,7 @@ class TernaryGPT(nn.Module):
             "quantization": self.quantization_stats(),
             "attention": {
                 "scheme": self.config.attention_quantization,
+                "normalization": self.config.attention_normalization,
                 "clip": self.config.attention_clip,
                 "threshold": self.config.attention_threshold,
                 "qkv_quantization": self.config.qkv_quantization,

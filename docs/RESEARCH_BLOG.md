@@ -778,6 +778,8 @@ Its code contributes to the integer denominator but not to Route·V. This is
 algebraically analogous to Softmax-1 and is compatible with integer
 accumulation. It is now a predeclared architecture arm after the clip and
 shared-scale experiments, not an unmeasured change to the running control.
+The implementation reports the realized no-update mass and supplies an exact
+integer Route·V reference whose denominator includes the virtual route code.
 
 [Accurate 4-Bit Quantization with Hyperspherical
 Architecture](https://openreview.net/forum?id=tiqfxkYf1o) bounds attention and

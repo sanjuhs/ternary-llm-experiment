@@ -48,6 +48,8 @@ The strict residual-curriculum outputs are preserved in
   distillation;
 - exact reference linear, attention Q·K, and two-plane Route·V paths with
   binary/ternary code operands and INT32 accumulators;
+- an integer-LUT Softmax-1 route with a virtual no-update code that contributes
+  to the integer denominator without adding a value vector;
 - straight-through ternary fake quantization with per-row weight and per-token
   activation scales;
 - training, validation, checkpoint/resume, and text generation;

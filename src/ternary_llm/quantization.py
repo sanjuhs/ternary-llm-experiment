@@ -5,7 +5,12 @@ from collections.abc import Sequence
 import torch
 from torch import Tensor
 
-from ternary_llm.config import ActivationEncoding, AttentionQuantization, Mode
+from ternary_llm.config import (
+    ActivationEncoding,
+    AttentionNormalization,
+    AttentionQuantization,
+    Mode,
+)
 
 
 def uses_ternary_weights(mode: Mode) -> bool:
@@ -384,6 +389,7 @@ def int2_route_ternary_value_reference(
     values: Tensor,
     value_scale: Tensor,
     *,
+    empty_route_code: Tensor | int = 0,
     threshold: float = 0.5,
     eps: float = 1e-5,
 ) -> tuple[Tensor, Tensor]:
@@ -420,7 +426,18 @@ def int2_route_ternary_value_reference(
     high_accumulator = high_plane @ value_codes
     accumulators = torch.stack((low_accumulator, high_accumulator), dim=-1)
     combined = low_accumulator + torch.bitwise_left_shift(high_accumulator, 1)
-    denominator = route_codes.sum(dim=-1, keepdim=True).clamp_min(1)
+    empty_code = torch.as_tensor(
+        empty_route_code,
+        device=route_codes.device,
+        dtype=torch.int32,
+    )
+    if empty_code.numel() and (
+        empty_code.min().item() < 0 or empty_code.max().item() > 3
+    ):
+        raise ValueError("empty route code must be in [0, 3]")
+    denominator = (
+        route_codes.sum(dim=-1, keepdim=True) + empty_code
+    ).clamp_min(1)
     output = combined.to(values.dtype) / denominator.to(values.dtype)
     output = output * positive_scale.to(values.dtype)
     return output, accumulators
@@ -530,10 +547,19 @@ def quantize_attention(
     valid: Tensor,
     *,
     scheme: AttentionQuantization,
+    normalization: AttentionNormalization = "softmax",
     clip: float,
     threshold: float,
 ) -> tuple[Tensor, Tensor | None, Tensor | None]:
     """Return attention probabilities plus optional score/probability codes."""
+    if normalization == "softmax1":
+        # A virtual key with a fixed zero score implements
+        # exp(score_i) / (1 + sum_j exp(score_j)). It is included before score
+        # shifting and route quantization, but removed before Route·V.
+        scores = torch.cat((scores, torch.zeros_like(scores[..., :1])), dim=-1)
+        valid = torch.cat((valid, torch.ones_like(valid[..., :1])), dim=-1)
+    elif normalization != "softmax":
+        raise ValueError(f"unsupported attention normalization: {normalization}")
     score_codes = None
     score_schemes = {
         "score_int2",
@@ -567,6 +593,12 @@ def quantize_attention(
             probabilities,
             threshold=threshold,
         )
+    if normalization == "softmax1":
+        probabilities = probabilities[..., :-1]
+        if score_codes is not None:
+            score_codes = score_codes[..., :-1]
+        if probability_codes is not None:
+            probability_codes = probability_codes[..., :-1]
     return probabilities, score_codes, probability_codes
 
 

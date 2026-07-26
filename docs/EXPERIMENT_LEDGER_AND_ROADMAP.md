@@ -435,6 +435,12 @@ the best shared-scale checkpoint against the unchanged integer-LUT path. The
 gate is lower matched validation loss plus non-collapsed route-code utilization;
 a theoretical outlier advantage is not enough.
 
+The option is implemented as `attention_normalization = "softmax1"`, including
+the virtual route in both integer-LUT and probability-code normalization. The
+diagnostics report its realized no-update mass, and the exact Route·V reference
+accepts the virtual two-bit code in its INT32 denominator. A queued 4,000-step
+refinement runs only after the shared-scale checkpoint exists.
+
 The July 2026 literature audit also rejects three tempting but invalid shortcuts:
 
 - TWLA's A4 is a mixed per-layer `{2,4,6,8}` budget, not uniform ternary

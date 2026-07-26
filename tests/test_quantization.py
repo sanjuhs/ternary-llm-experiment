@@ -9,6 +9,7 @@ from ternary_llm.quantization import (
     quantize_activation_a4,
     quantize_activation_levels,
     quantize_activation_residual_planes,
+    quantize_attention,
     quantize_attention_probabilities_binary,
     quantize_attention_probabilities_int2,
     quantize_attention_scores_int2,
@@ -205,6 +206,26 @@ def test_integer_softmax_uses_integer_lut_and_preserves_gradients() -> None:
     assert scores.grad is not None
 
 
+def test_softmax1_virtual_route_reduces_attention_mass_and_keeps_gradients() -> None:
+    scores = torch.zeros((1, 1, 2, 2), requires_grad=True)
+    valid = torch.ones(2, 2, dtype=torch.bool).tril()
+    probabilities, score_codes, route_codes = quantize_attention(
+        scores,
+        valid,
+        scheme="score_lut_prob_int2",
+        normalization="softmax1",
+        clip=2.0,
+        threshold=0.5,
+    )
+
+    assert probabilities.shape == scores.shape
+    assert score_codes is not None and score_codes.shape == scores.shape
+    assert route_codes is not None and route_codes.shape == scores.shape
+    assert torch.all(probabilities.sum(dim=-1) < 1.0)
+    probabilities.sum().backward()
+    assert scores.grad is not None and torch.isfinite(scores.grad).all()
+
+
 @pytest.mark.parametrize(
     ("clip", "expected_codes"),
     [
@@ -284,3 +305,19 @@ def test_int2_route_ternary_value_reference_matches_reconstruction() -> None:
     assert accumulators.dtype == torch.int32
     assert accumulators.shape == (2, 3, 4, 8, 2)
     assert torch.allclose(output, expected, atol=1e-6, rtol=1e-6)
+
+
+def test_int2_route_reference_supports_softmax1_empty_route_code() -> None:
+    route_codes = torch.tensor([[[[3.0, 1.0]]]])
+    values = torch.tensor([[[[1.0, 0.0], [0.0, 1.0]]]])
+    value_scale = torch.ones((1, 1, 1, 1))
+
+    output, _ = int2_route_ternary_value_reference(
+        route_codes,
+        values,
+        value_scale,
+        empty_route_code=2,
+    )
+
+    expected = torch.tensor([[[[0.5, 1.0 / 6.0]]]])
+    assert torch.allclose(output, expected)
