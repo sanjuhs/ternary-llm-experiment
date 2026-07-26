@@ -84,7 +84,10 @@ Its exhaustive loss is **1.344198** over 4,907,776 validation targets. The
 approximately **0.495229 bits per UTF-8 byte** result beats the released
 TinyStories-33M common-text reference. Model capacity and float training are
 therefore no longer the limiting explanation for the ternary gap. The matched
-ternary-weight conversion now starts from this checkpoint.
+ternary-weight conversion from this checkpoint completes at **1.535463 loss**,
+**4.6435 perplexity**, and approximately **0.565695 BPB**. Ternary weights alone
+are therefore only 2.2% behind the released reference in BPB, but 14.2% behind
+their own matched float teacher.
 
 ## The inference rule
 

@@ -816,3 +816,25 @@ greater confidence. The automatically queued stages start with one
 corpus-equivalent ternary-weight QAT budget, followed by packed export, A4
 activation adaptation, and the strict ternary-QKV/low-bit-attention/ternary-
 residual stage.
+
+## The matched ternary-weight model
+
+After one corpus-equivalent QAT budget, the 27.4M model with ternary forward
+weights reaches **1.535463 loss** and **4.6435 perplexity** on the exhaustive
+validation stream. Its approximately **0.565695 bits per UTF-8 byte** is only
+2.2% worse than the released TinyStories-33M checkpoint, but 14.2% worse than
+its own float teacher's BPB. Those are both useful comparisons: it is already a
+strong tiny language model, while the matched teacher still exposes a real
+conversion gap.
+
+The weight-code distribution is 32.61% negative, 35.05% zero, and 32.34%
+positive. The inference export occupies **7,509,079 bytes**, compared with
+337,312,859 bytes for the resumable checkpoint containing float shadow weights
+and optimizer state. That 44.9x file-size difference is not a pure tensor
+compression benchmark, but it verifies that the deployed weight payload is
+compact and the training payload is correctly kept out of inference.
+
+The next stage is the matched COAT A4 activation control. It keeps the same
+ternary weights and teacher so we can measure the activation cost separately
+before forcing ternary Q/K/V, the integer attention route, and ternary residual
+planes.

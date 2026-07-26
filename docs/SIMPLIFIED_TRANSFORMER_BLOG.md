@@ -353,5 +353,11 @@ validation loss is **1.3442**, and its common-text score is about **0.495 bits
 per byte**. The released TinyStories-33M model scores about **0.554 bits per
 byte**, where lower is better. In plain language: our normal-sized teacher is
 good enough. If its ternary children fall behind, we can no longer blame an
-undertrained teacher. The ternary-weight child is now training from that
-stronger starting point.
+undertrained teacher.
+
+The first ternary child has also finished. Its full loss is **1.5355**, and its
+common-text score is about **0.566 bits per byte**—only around 2.2% behind the
+released TinyStories-33M model, though still behind its own stronger parent.
+Its deployable ternary-weight file is about **7.5 MB**. That is encouraging for
+the weights; the next tests ask how much quality is lost when the messages
+moving between layers are reduced as well.

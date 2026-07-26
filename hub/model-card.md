@@ -67,6 +67,7 @@ tokenizers differ, bits per UTF-8 byte is the meaningful common metric:
 | Released TinyStories-33M | 1.54010 | 4.6650 | **0.55354** |
 | Our 5.84M float baseline | 1.68961 | 5.4174 | **0.62249** |
 | Our 27.4M matched float control | **1.34420** | **3.8351** | **0.49523** |
+| Our 27.4M ternary-weight model | **1.53546** | **4.6435** | **0.56570** |
 
 The exact JSON records are in `baseline-audit/`. The full methodology and
 comparability caveats are in the GitHub
@@ -77,6 +78,11 @@ two-corpus-equivalent token budget. It beats the released 33M checkpoint by
 about 10.5% on the tokenizer-neutral bits-per-byte metric. Its checkpoint,
 exhaustive evaluation, diagnostics, generations, and metrics are in
 `tinystories-28m/float-two-pass/`.
+
+The matched ternary-weight model uses 35.05% zero codes and is only 2.2% behind
+the released 33M checkpoint in BPB, while remaining 14.2% behind its own float
+teacher. Its `model-2bit.pt` inference export is 7,509,079 bytes; the full
+resumable shadow-weight checkpoint is intentionally much larger.
 
 ## Residual-plane refinement
 

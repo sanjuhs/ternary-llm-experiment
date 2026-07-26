@@ -11,11 +11,16 @@ This is the compact, auditable answer to three questions:
 
 ## The headline
 
-The best full-corpus model remains the floating-point baseline at **1.6989
-validation loss**. The best full-corpus model with ternary weights is **2.0312**.
-On the shorter deterministic evaluation used for the projection study, the same
-ternary-weight checkpoint measured **2.0251**. Those two numbers use different
-validation scopes and must not be presented as a direct improvement.
+The new 27.4M-parameter float control reaches **1.344198 validation loss** and
+**3.8351 perplexity** over all 4,907,776 validation targets. Its matched
+ternary-weight model reaches **1.535463** and **4.6435**. This replaces the old
+5.84M headline values of 1.6989 float and 2.0312 ternary-weight loss.
+
+On common raw validation text, the new float model scores approximately
+**0.495229 bits per UTF-8 byte**, 10.5% better than the released
+TinyStories-33M checkpoint. The ternary-weight model scores approximately
+**0.565695 BPB**, only 2.2% worse than that released reference, although it
+remains 14.2% worse than its own matched float teacher.
 
 The best result with ternary weights and 4-bit residual activations is **2.1126**.
 The best result with a 2-bit attention representation is **2.1383**. A model with
@@ -93,15 +98,17 @@ All result tables below are from this repository's recorded metrics.
 
 ### Full-corpus baselines
 
-| Representation | Tokens sampled | Validation loss | Perplexity |
-|---|---:|---:|---:|
-| Float | 488,177,664 | **1.6989** | 5.47 |
-| Ternary weights, float activations | 488,177,664 | **2.0312** | 7.62 |
+| Model | Representation | Tokens sampled | Exhaustive loss | Perplexity |
+|---|---|---:|---:|---:|
+| Earlier 5.84M | Float | 488,177,664 | **1.68961** | 5.4174 |
+| Earlier 5.84M | Ternary weights, float activations | 488,177,664 | **2.0312** | 7.62 |
+| Matched 27.4M | Float | 976,355,328 | **1.344198** | 3.8351 |
+| Matched 27.4M | Ternary weights, float activations | 488,177,664 | **1.535463** | 4.6435 |
 
-The ternary-weight model uses about 35.4% zero weight codes. Its packed
-inference export is 1,521,077 bytes. This is the strongest evidence so far that
-ternary storage and add/subtract/skip linear operators can produce useful
-language.
+The new ternary-weight model uses 35.05% zero weight codes. Its packed
+inference export is 7,509,079 bytes, versus 337,312,859 bytes for the resumable
+shadow-weight checkpoint: a 44.9x file-size reduction. The packed file stores
+ternary codes and scales, not optimizer or shadow-weight state.
 
 ### Strict activation attempts
 
