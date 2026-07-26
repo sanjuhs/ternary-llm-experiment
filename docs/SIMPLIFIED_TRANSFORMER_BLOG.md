@@ -347,6 +347,14 @@ attention slot: the head may choose “send no message” instead of inventing a
 extreme score. We will test that only after the current matched clip and scale
 experiments, so it has a clean control.
 
+The first attention repair is already measurable. Giving the four-entry
+attention codebook a smaller range made every code usable and reduced the
+matched validation loss from 2.2512 to **2.2269**. A longer follow-up first
+worsened to 2.2553, then recovered to 2.2401 by step 4,000. That is still not
+better than the short run. We therefore keep both checkpoints and retest them
+on the same pages before choosing which one supplies the next experiment. More
+training time does not automatically earn a win.
+
 There is one more ordinary Transformer component to simplify. GELU is a curved
 activation function that normally needs a floating approximation. ReLU simply
 asks whether a number is positive and otherwise replaces it with zero. Our

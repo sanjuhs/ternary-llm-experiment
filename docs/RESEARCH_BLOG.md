@@ -1036,6 +1036,17 @@ another. The predeclared 5,000-step clip-2.0 refinement has started; the claim
 remains provisional until its exhaustive sequential validation, diagnostics,
 generations, export, and artifact audit finish.
 
+The longer refinement is not monotonically better. On the same 200-batch
+validation slice it measured **2.255291 loss / 9.5381 perplexity** at step
+2,000, then recovered to **2.240107 / 9.3943** at step 4,000. At step 4,000 its
+route codes remained active at 86.54%, 7.73%, 4.10%, and 1.64%; attention
+entropy was 2.0538 and residual normalized MSE was 2.16%. The result is still
+0.013227 loss worse than the original 2,000-step screen winner, so it is an
+intermediate trajectory point rather than a new best. Before the next
+architecture stage, the screen checkpoint and the refinement's saved best
+checkpoint will be re-evaluated on the same batches. The lower-loss source will
+advance, while the fixed-budget endpoint remains preserved and reported.
+
 Together, these papers suggest two honest follow-ups. For exact two-bit storage,
 improve the two binary planes with block reconstruction, groupwise fixed-point
 scales, and layer sensitivity training. For quality with ternary operators,

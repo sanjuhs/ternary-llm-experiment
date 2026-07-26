@@ -466,6 +466,21 @@ all four probability codes. It also beat the mature clip-3 bounded control by
 from its saved 2,000-step checkpoint; only its exhaustive sequential result
 will become the stage endpoint.
 
+The longer run has now supplied two intermediate validations on that same
+200-batch slice:
+
+| Refinement step | Loss | Perplexity | Zero routes | Code 2 | Entropy | Residual NMSE |
+|---:|---:|---:|---:|---:|---:|---:|
+| 2,000 | 2.255291 | 9.5381 | 85.91% | 4.33% | 2.0913 | 0.02122 |
+| 4,000 | **2.240107** | **9.3943** | 86.54% | 4.10% | 2.0538 | 0.02163 |
+
+The recovery from step 2,000 is encouraging, but step 4,000 remains 0.013227
+worse than the original screen checkpoint's 2.226880. To prevent additional
+training from silently replacing a better model, the next stage re-evaluates
+the original screen checkpoint and the refinement's saved best checkpoint on
+identical batches and advances only the lower-loss source. The 5,000-step
+fixed-budget endpoint is still retained for the experimental record.
+
 The longer clip-3 control completed its predeclared training budget. Its
 matched validation trajectory through step 30,000 is:
 
