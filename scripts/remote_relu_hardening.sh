@@ -17,6 +17,10 @@ if [[ -s "${experiment}/SUCCESS" ]]; then
   echo "ReLU hardening is already complete: ${experiment}/SUCCESS"
   exit 0
 fi
+if [[ ! -s "${normalization_experiment}/SUCCESS" ]]; then
+  echo "Softmax1 refinement must complete before ReLU hardening" >&2
+  exit 1
+fi
 
 selected_clip="$(jq -r '.selected_clip' "${clip_experiment}/selection.json")"
 selected_initial="$(

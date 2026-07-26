@@ -15,6 +15,10 @@ if [[ -s "${experiment}/SUCCESS" ]]; then
   echo "shared QKV scale refinement is already complete: ${experiment}/SUCCESS"
   exit 0
 fi
+if [[ ! -s "${clip_experiment}/SUCCESS" ]]; then
+  echo "attention clip refinement must complete before QKV scale refinement" >&2
+  exit 1
+fi
 
 selected_clip="$(jq -r '.selected_clip' "${clip_experiment}/selection.json")"
 source_run="${base}/attention-clip-selected-${selected_clip}-refine"

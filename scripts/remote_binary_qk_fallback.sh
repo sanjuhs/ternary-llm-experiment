@@ -18,6 +18,10 @@ if [[ -s "${experiment}/SUCCESS" ]]; then
   echo "Binary Q/K fallback is already complete: ${experiment}/SUCCESS"
   exit 0
 fi
+if [[ ! -s "${activation_experiment}/SUCCESS" ]]; then
+  echo "ReLU hardening must complete before the binary Q/K fallback" >&2
+  exit 1
+fi
 
 selected_clip="$(jq -r '.selected_clip' "${clip_experiment}/selection.json")"
 selected_initial="$(

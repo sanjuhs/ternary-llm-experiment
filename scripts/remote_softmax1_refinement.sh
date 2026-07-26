@@ -16,6 +16,10 @@ if [[ -s "${experiment}/SUCCESS" ]]; then
   echo "Softmax1 refinement is already complete: ${experiment}/SUCCESS"
   exit 0
 fi
+if [[ ! -s "${scale_experiment}/SUCCESS" ]]; then
+  echo "shared QKV scale refinement must complete before Softmax1 refinement" >&2
+  exit 1
+fi
 
 selected_clip="$(jq -r '.selected_clip' "${clip_experiment}/selection.json")"
 selected_initial="$(
