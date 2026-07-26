@@ -857,10 +857,14 @@ reports ternary weights with average two-bit activations in diffusion
 Transformers by using a Hadamard transform to regularize per-token
 distributions and activation-only mixed precision to protect sensitive layers.
 It is not an autoregressive language model and does not prove ternary attention
-or residual operands. Its transferable claims are narrower: orthogonal mixing
-can make a tiny activation codebook more stable, and layerwise error should
-control where scarce extra bits are spent. Those are exactly the two hypotheses
-tested by our fixed-Hadamard path and equal-storage NMSE-aware plane allocation.
+or residual operands. Its enhanced baseline also contains a floating low-rank
+compensation branch, while its mixed-precision design fixes attention scores at
+eight bits and adaptive LayerNorm at four bits. Average A2 therefore does not
+mean an end-to-end two-bit graph. Its transferable claims are narrower:
+orthogonal mixing can make a tiny activation codebook more stable, and
+layerwise error should control where scarce extra bits are spent. Those are
+exactly the two hypotheses tested by our fixed-Hadamard path and equal-storage
+NMSE-aware plane allocation, without importing RobuQ's floating bypass.
 
 [PT2-LLM](https://openreview.net/forum?id=7QZanjCD6M) is a complementary
 weight-only result. Its iterative ternary fitting, activation-aware grid
@@ -904,24 +908,26 @@ normalization wins exhaustive validation. This is a test, not an assumption:
 the ReLU endpoint is selected only if it preserves or improves matched loss.
 
 The live 27.4M strict control supports that ordering. At 2k, 4k, 6k, 8k, 10k,
-12k, 14k, 16k, 18k, 20k, and 22k steps its matched validation loss moved from
+12k, 14k, 16k, 18k, 20k, 22k, and 24k steps its matched validation loss moved from
 **2.41839** to
 **2.35827**, **2.30490**, **2.26820**, **2.25082**, and **2.25042**
 before regressing to **2.25656** at 14k and **2.28049** (perplexity **9.78147**)
 at 16k, **2.29273** (perplexity **9.90189**) at 18k, and **2.29519**
 (perplexity **9.92630**) at 20k, then recovering modestly to **2.28419**
-(perplexity **9.81771**) at 22k. The
+(perplexity **9.81771**) at 22k before worsening to **2.30661**
+(perplexity **10.04031**) at 24k. The
 10k-to-12k interval improved loss by only 0.00040, then the next three
 intervals lost 0.00613, 0.02393, and 0.01224; the fourth lost another 0.00246.
 The 20k-to-22k interval recovered 0.01100, but remained 0.03377 worse than the
-12k minimum. Over the full trajectory the zero-route fraction rose from 79.62%
-to 88.21%, attention entropy fell from 2.3844 to 1.8340, residual NMSE rose
-from 0.01670 to 0.02319, and probability code 2 remained unused. This is a
-measured plateau followed by sustained degradation with a partial recovery,
-rather than a monotonic convergence curve. We still retain the predeclared 30k
-control so its final result is unbiased. The diagnostic trend is the reason to
-run the already-declared clip sweep afterward—not permission to alter the
-control midstream.
+12k minimum; the next interval lost 0.02242 and ended 0.05619 above that
+minimum. Over the full trajectory the zero-route fraction rose from 79.62% to
+88.27%, attention entropy fell from 2.3844 to 1.8314, residual NMSE rose from
+0.01670 to 0.02332, and probability code 2 remained unused. This is a measured
+plateau followed by sustained degradation with a temporary recovery, rather
+than a monotonic convergence curve. We still retain the predeclared 30k control
+so its final result is unbiased. The diagnostic trend is the reason to run the
+already-declared clip sweep afterward—not permission to alter the control
+midstream.
 
 The live trainer predates automatic best-checkpoint retention and writes its
 resumable checkpoint every 5,000 steps. Before the next overwrite, we therefore
