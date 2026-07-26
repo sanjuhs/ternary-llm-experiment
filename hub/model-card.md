@@ -84,6 +84,11 @@ the released 33M checkpoint in BPB, while remaining 14.2% behind its own float
 teacher. Its `model-2bit.pt` inference export is 7,509,079 bytes; the full
 resumable shadow-weight checkpoint is intentionally much larger.
 
+The matched calibrated COAT A4 activation control reaches **1.800118 loss** and
+**6.0504 perplexity**, a +0.264656 loss penalty relative to ternary weights with
+float activations. Its checkpoint, exhaustive evaluation, diagnostics, and
+generations are under `tinystories-28m/coat-a4-quarter-pass/`.
+
 ## Residual-plane refinement
 
 Every arm below retains ternary weights, ternary Q/K/V, and the low-bit integer

@@ -838,3 +838,21 @@ The next stage is the matched COAT A4 activation control. It keeps the same
 ternary weights and teacher so we can measure the activation cost separately
 before forcing ternary Q/K/V, the integer attention route, and ternary residual
 planes.
+
+## The matched A4 control does not preserve loss
+
+After 15,000 adaptation steps, calibrated COAT A4 activations reach
+**1.800118 loss** and **6.0504 perplexity** on the exhaustive validation stream.
+That is 0.264656 worse than the matched ternary-weight checkpoint.
+
+This matters because the small-model A4 experiments looked much closer to their
+local controls. At 27.4M parameters and a stronger teacher, the activation
+boundary is plainly the dominant remaining error source. COAT's learned
+orthogonal projection helps organize outliers, but it cannot by itself recover
+information discarded by a four-bit scalar codebook.
+
+The final running stage is therefore a stress test, not an assumed win. It
+starts from this A4 checkpoint and forces ternary Q/K/V, the four-entry integer
+attention lookup, two-bit attention routes, fixed Hadamard mixing, and three
+ternary residual planes. Its purpose is to measure the real cost of the
+hardware-oriented graph at matched capacity.

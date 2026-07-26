@@ -110,6 +110,21 @@ inference export is 7,509,079 bytes, versus 337,312,859 bytes for the resumable
 shadow-weight checkpoint: a 44.9x file-size reduction. The packed file stores
 ternary codes and scales, not optimizer or shadow-weight state.
 
+### Matched 27.4M activation control
+
+The calibrated COAT A4 stage starts from the matched ternary-weight checkpoint
+and receives 15,000 adaptation steps with the float model as teacher.
+
+| Representation | Exhaustive loss | Perplexity | Delta from ternary weights |
+|---|---:|---:|---:|
+| Ternary weights, float activations | 1.535463 | 4.6435 | — |
+| Ternary weights, COAT A4 activations | **1.800118** | **6.0504** | +0.264656 |
+
+This is a negative quality result: calibrated four-bit activation boundaries
+do not preserve the matched ternary-weight loss at this capacity and training
+budget. The checkpoint remains the required control and initialization for the
+strict ternary-QKV, integer-attention, multi-plane residual stage.
+
 ### Strict activation attempts
 
 | Experiment | Validation loss | Perplexity | Outcome |

@@ -361,3 +361,10 @@ released TinyStories-33M model, though still behind its own stronger parent.
 Its deployable ternary-weight file is about **7.5 MB**. That is encouraging for
 the weights; the next tests ask how much quality is lost when the messages
 moving between layers are reduced as well.
+
+The first message-compression test is now finished. Keeping ternary weights but
+using four-bit messages produces **1.8001 loss**, compared with **1.5355** when
+those messages remain ordinary floating-point values. So four bits are usable,
+but they are not free: the model loses a noticeable amount of story-prediction
+quality. The final running model goes further by making Q, K, and V ternary and
+using ternary cards between every block.
