@@ -843,16 +843,17 @@ normalization wins exhaustive validation. This is a test, not an assumption:
 the ReLU endpoint is selected only if it preserves or improves matched loss.
 
 The live 27.4M strict control supports that ordering. At 2k, 4k, 6k, 8k, 10k,
-and 12k steps its matched validation loss moved from **2.41839** to
+12k, and 14k steps its matched validation loss moved from **2.41839** to
 **2.35827**, **2.30490**, **2.26820**, **2.25082**, and **2.25042**
-(perplexity **9.49174** at 12k). The final 2,000 steps improved loss by only
-0.00040. Over the full trajectory the zero-route fraction rose from 79.62% to
-87.24%, attention entropy fell from 2.3844 to 1.9178, residual NMSE rose from
-0.01670 to 0.02102, and probability code 2 remained unused.
-This is now a measured plateau rather than merely a slowing curve. We still
-retain the predeclared 30k control so its final result is unbiased. The
-diagnostic trend is the reason to run the already-declared clip sweep
-afterward—not permission to alter the control midstream.
+before regressing to **2.25656** (perplexity **9.55014**) at 14k. The 10k-to-12k
+interval improved loss by only 0.00040, and the next interval lost 0.00613.
+Over the full trajectory the zero-route fraction rose from 79.62% to 87.51%,
+attention entropy fell from 2.3844 to 1.8916, residual NMSE rose from 0.01670
+to 0.02187, and probability code 2 remained unused.
+This is now a measured plateau followed by regression rather than merely a
+slowing curve. We still retain the predeclared 30k control so its final result
+is unbiased. The diagnostic trend is the reason to run the already-declared
+clip sweep afterward—not permission to alter the control midstream.
 
 [Accurate 4-Bit Quantization with Hyperspherical
 Architecture](https://openreview.net/forum?id=tiqfxkYf1o) bounds attention and

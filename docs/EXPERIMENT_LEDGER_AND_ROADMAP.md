@@ -421,7 +421,7 @@ all four probability codes `[0, 1, 2, 3]`. The sweep still allows the data to
 reject that theoretical advantage if a different clip produces lower loss.
 
 The longer clip-3 control is still running. Its matched validation trajectory
-through step 12,000 is:
+through step 14,000 is:
 
 | Step | Validation loss | Perplexity | Zero routes | Attention entropy | Residual NMSE |
 |---:|---:|---:|---:|---:|---:|
@@ -430,15 +430,17 @@ through step 12,000 is:
 | 6,000 | 2.304905 | 10.0232 | 84.68% | 2.1034 | 0.01806 |
 | 8,000 | 2.268195 | 9.6619 | 85.77% | 2.0259 | 0.01899 |
 | 10,000 | 2.250819 | 9.4955 | 86.25% | 1.9860 | 0.01992 |
-| 12,000 | **2.250422** | **9.4917** | **87.24%** | **1.9178** | **0.02102** |
+| 12,000 | **2.250422** | **9.4917** | 87.24% | 1.9178 | 0.02102 |
+| 14,000 | 2.256556 | 9.5501 | **87.51%** | **1.8916** | **0.02187** |
 
 The last 2,000 steps recovered only 0.000397 loss while route sparsity and
-residual error continued to rise, so the current geometry has reached a
-measured plateau. The control still must not be stopped early: completing its
-predeclared budget prevents an adaptive stopping decision from biasing the
-comparison. The rising zero-route fraction, falling entropy, and permanently
-unused probability code 2 are concrete evidence for the predeclared clip sweep,
-not grounds to change the live control's settings.
+residual error continued to rise; the following 2,000 steps then regressed by
+0.006134 loss. The current geometry has therefore reached a measured plateau
+and begun to move backward. The control still must not be stopped early:
+completing its predeclared budget prevents an adaptive stopping decision from
+biasing the comparison. The rising zero-route fraction, falling entropy, and
+permanently unused probability code 2 are concrete evidence for the
+predeclared clip sweep, not grounds to change the live control's settings.
 
 [PT2-LLM](https://openreview.net/forum?id=7QZanjCD6M) adds activation-aware
 ternary grid alignment and structural-similarity reordering for weights.
