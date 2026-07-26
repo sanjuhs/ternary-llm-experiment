@@ -155,3 +155,6 @@ winner = min(full, key=full.get)
     + "\n"
 )
 PY
+
+printf 'control_run=softmax-control-refine\nsoftmax1_run=softmax1-no-update-refine\n' \
+  > "${experiment}/SUCCESS"

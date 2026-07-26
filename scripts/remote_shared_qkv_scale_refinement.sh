@@ -224,3 +224,7 @@ full = {
     + "\n"
 )
 PY
+
+printf 'selected_initial_scale=%s\ncontrol_run=%s\nlearned_run=%s\n' \
+  "${selected_initial}" "${control_run_name}" "${learned_run_name}" \
+  > "${experiment}/SUCCESS"

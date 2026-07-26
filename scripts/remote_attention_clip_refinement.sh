@@ -148,3 +148,5 @@ do
 done
 
 sha256sum "${run_dir}/checkpoint.pt" > "${run_dir}/SHA256SUMS"
+printf 'selected_clip=%s\nrun_dir=%s\n' \
+  "${selection}" "${run_dir}" > "${experiment}/SUCCESS"
