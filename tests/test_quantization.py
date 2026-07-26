@@ -199,3 +199,28 @@ def test_integer_softmax_uses_integer_lut_and_preserves_gradients() -> None:
     assert torch.allclose(probabilities.sum(dim=-1), torch.ones(1, 1, 1))
     probabilities[..., 0].sum().backward()
     assert scores.grad is not None
+
+
+@pytest.mark.parametrize(
+    ("clip", "expected_codes"),
+    [
+        (2.0, {0.0, 1.0, 2.0, 3.0}),
+        (3.0, {0.0, 1.0, 3.0}),
+    ],
+)
+def test_integer_lut_clip_controls_probability_code_utilization(
+    clip: float,
+    expected_codes: set[float],
+) -> None:
+    score_codes = torch.tensor([[[[-3.0, -2.0, -1.0, 0.0]]]])
+    scores = score_codes * (clip / 3.0)
+    valid = torch.ones_like(score_codes, dtype=torch.bool)
+    probabilities, _ = integer_softmax_from_int2_codes(
+        scores,
+        score_codes,
+        valid,
+        clip=clip,
+    )
+    _, probability_codes = quantize_attention_probabilities_int2(probabilities)
+
+    assert set(probability_codes.unique().tolist()) == expected_codes
