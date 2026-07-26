@@ -427,6 +427,22 @@ motivate bounded cosine-like scores. These are useful follow-up architecture
 hypotheses, not evidence that a two-bit language-model attention path already
 matches float loss.
 
+The next architecture arm after the two queued refinements is therefore
+`integer_lut_no_update`: add a fixed denominator bucket with no corresponding V
+vector before score shifting and low-bit route normalization, matching the
+Softmax-1 idea without introducing a floating operand. It will be screened from
+the best shared-scale checkpoint against the unchanged integer-LUT path. The
+gate is lower matched validation loss plus non-collapsed route-code utilization;
+a theoretical outlier advantage is not enough.
+
+The July 2026 literature audit also rejects three tempting but invalid shortcuts:
+
+- TWLA's A4 is a mixed per-layer `{2,4,6,8}` budget, not uniform ternary
+  activations;
+- TurboAttention performs Q/K/V attention in INT8 and mixes INT2/INT4 KV heads;
+- BWLA's best stable joint result is W1A6 and its low-rank residual correction
+  is not allowed by our inference contract.
+
 - [PackQViT](https://openreview.net/forum?id=N56hAiQvot) supports a fully
   four-bit vision path with integer-friendly nonlinear approximations. It
   strengthens the implementation case, but does not establish ternary language

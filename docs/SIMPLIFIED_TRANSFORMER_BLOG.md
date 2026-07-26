@@ -297,6 +297,30 @@ quality by expanding each matrix into several ternary factors, but spends more
 storage and additions. Residual-free Transformers try to redesign the model so
 the values are easier to compress in the first place.
 
+The newest results also explain why “two-bit” in a paper title needs careful
+reading:
+
+| Paper | What actually runs at inference | What we can borrow |
+|---|---|---|
+| TWLA | Ternary weights; layers choose 2, 4, 6, or 8 activation bits under an average four-bit budget | Rotate values and give sensitive layers more room |
+| BWLA | Binary weights; usually six-bit activations; a small higher-precision correction | Shape values into a quantizer-friendly distribution |
+| TurboAttention | Q/K/V calculations at eight bits; KV memory mixes two- and four-bit heads | Integer attention, small lookup tables, and head sensitivity |
+| FTerViT | Ternary weights and normalization parameters; eight-bit activations; vision rather than language | A possible ternary normalization design |
+
+None of these papers has already built our exact machine. That is why our
+experiment matters: we require the big operands to be ternary, forbid a hidden
+floating correction path, and measure story loss on the same text every time.
+
+One training idea looks especially useful. Ordinary Transformers sometimes
+create a few enormous internal numbers. Compressing them is like drawing both a
+mountain and a pebble with only four shades: the pebble disappears. A method
+called Softmax-1, paired with an optimizer that spreads updates across
+directions, kept the normal model's quality while making those internal values
+far less extreme. For our integer attention, the natural version is an empty
+attention slot: the head may choose “send no message” instead of inventing an
+extreme score. We will test that only after the current matched clip and scale
+experiments, so it has a clean control.
+
 That gives us two sensible products rather than one vague promise:
 
 1. a **strict two-bit model**, where storage wins but quality may be lower; and

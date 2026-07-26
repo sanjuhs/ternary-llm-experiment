@@ -710,6 +710,50 @@ strongest lesson for this project is that later or sensitive blocks should
 receive more activation capacity. It still targets W1.58A4 rather than a
 uniformly ternary residual stream.
 
+The full ICML 2026 table makes that boundary precise. On Qwen3-32B, TWLA moves
+WikiText-2 perplexity from **7.61** at FP16 to **8.94** with ternary weights and
+FP16 activations, and to **9.71** at its A4 budget. That A4 result is marked
+mixed precision: its dynamic program chooses per-layer activation precisions
+from `{2, 4, 6, 8}` while meeting an average budget. It is powerful evidence
+for rotation plus cross-layer sensitivity allocation, but it does not show that
+every activation boundary can use one ternary code.
+
+[BWLA](https://arxiv.org/abs/2605.00422) is an even sharper negative control.
+Its Orthogonal-Kronecker Transform smooths activation tails, and a small
+low-rank correction recovers binary-weight error. It obtains useful W1A6
+results, including **11.92** WikiText-2 perplexity on Qwen3-32B versus **7.61**
+at FP16. At A4, however, the paper reports **39.88**, **55.12**, and **34.77**
+perplexity for LLaMA2-7B, LLaMA3-8B, and Qwen3-14B. The distribution shaping is
+worth borrowing, but its low-rank floating correction would violate our
+no-bypass inference rule and its A4 evidence does not support a uniform two-bit
+endpoint.
+
+[TurboAttention](https://arxiv.org/abs/2412.08585) proves that an attention
+kernel can avoid FP32 softmax and execute its matrix multiplications as
+integers. Its implementation first quantizes Q/K/V blocks to INT8, stores half
+the KV heads at INT2 and half at INT4, and approximates the exponential with a
+small lookup table plus a cubic polynomial. The paper explicitly reports
+quality degradation for pure INT2 and keeps the rest of the Transformer in
+FP16. Its integer dataflow supports our kernel design, while its precision
+choices do not satisfy the all-ternary contract.
+
+[From Attention to Activation](https://arxiv.org/abs/2410.17174) offers a
+training-time route rather than a post-training codebook. Across its GPT-2
+models, Softmax-1 and OrthoAdam keep unquantized perplexity essentially
+unchanged while reducing hidden-state kurtosis toward three. On its 130M GPT-2
+example, the 4-bit weight penalty falls from **657.0** perplexity points to
+**1.2**, and the coarse 8-bit weight/activation penalty falls from **23.60** to
+**0.43**. Embeddings, normalization, and softmax remain unquantized in those
+experiments, so this is not an endpoint result. It is strong evidence that the
+forward and optimizer geometry should prevent outliers before asking a tiny
+codebook to represent them.
+
+[FTerViT](https://arxiv.org/abs/2605.21171) closes another useful boundary by
+ternarizing every weight matrix and normalization parameter in a vision
+Transformer. Its activations remain eight-bit, and it is not a language model,
+but TernaryLayerNorm is a concrete candidate for removing one of our remaining
+learned full-precision parameter classes.
+
 [PT2-LLM](https://openreview.net/forum?id=7QZanjCD6M) is a complementary
 weight-only result. Its iterative ternary fitting, activation-aware grid
 alignment, and structural-similarity column reordering improve post-training
@@ -726,6 +770,14 @@ code: a head can represent “no update” without manufacturing an extreme logi
 The transferable hypothesis is architectural—make the zero-update state
 explicit before quantization—not that the paper has already demonstrated
 two-bit autoregressive attention.
+
+For our integer-LUT attention, the closest equivalent is an explicit
+**no-update bucket**: append a virtual zero-score key with no corresponding V
+vector before score shifting, LUT lookup, and probability-code normalization.
+Its code contributes to the integer denominator but not to Route·V. This is
+algebraically analogous to Softmax-1 and is compatible with integer
+accumulation. It is now a predeclared architecture arm after the clip and
+shared-scale experiments, not an unmeasured change to the running control.
 
 [Accurate 4-Bit Quantization with Hyperspherical
 Architecture](https://openreview.net/forum?id=tiqfxkYf1o) bounds attention and
