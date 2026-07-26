@@ -88,6 +88,18 @@ uv run ternary-publish-hf \
   --ipv4-only
 ```
 
+Selection and comparison folders are not checkpoint runs, so they use an
+explicit metadata mode. This skips the run-schema assertion but still verifies
+the size and Git-blob or LFS digest of every uploaded file:
+
+```bash
+uv run ternary-publish-hf \
+  artifacts/tinystories-28m/integer-rmsnorm-screen \
+  --metadata-folder \
+  --path-in-repo tinystories-28m/experiments/integer-rmsnorm-screen \
+  --ipv4-only
+```
+
 ## Setup
 
 `uv` manages the Python interpreter and virtual environment:
@@ -338,6 +350,6 @@ The `ternary-deployment-v2` artifact packs ternary operands at two bits, stores
 learned positive Q/K/V head scales as INT16 fixed-point values, preserves
 non-floating buffers, and includes a machine-readable inference-contract
 checklist. A packed checkpoint is therefore not automatically labeled
-end-to-end integer: the integer RMSNorm reference is not yet wired into the
-model runtime, and remaining requantization or sampling boundaries are reported
-in the export metadata.
+end-to-end integer. Exact fixed-point RMSNorm is now available through the
+opt-in `integer_reference` runtime and export override, but remaining
+requantization and sampling boundaries are reported in the export metadata.

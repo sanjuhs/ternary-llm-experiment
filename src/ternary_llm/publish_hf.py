@@ -146,12 +146,47 @@ def publish_run(
     )
     manifest_path = run_dir / "artifact-manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
-    expected_files = local_relative_files(run_dir)
+    result = publish_verified_folder(
+        run_dir,
+        repo_id=repo_id,
+        path_in_repo=path_in_repo,
+        repo_type=repo_type,
+        commit_message=commit_message,
+        ipv4_only=ipv4_only,
+        api=api,
+    )
+    result["artifact_manifest"] = manifest
+    result["publication_kind"] = "audited_run"
+    return result
+
+
+def publish_verified_folder(
+    folder: Path,
+    *,
+    repo_id: str,
+    path_in_repo: str,
+    repo_type: str,
+    commit_message: str,
+    ipv4_only: bool,
+    api: HfApi | None = None,
+) -> dict[str, Any]:
+    """Upload an arbitrary artifact folder and verify every remote byte.
+
+    Unlike :func:`publish_run`, this does not claim the folder is a completed
+    training run. It is intended for experiment selections, comparisons, and
+    summaries that have their own schemas.
+    """
+    folder = folder.resolve()
+    if not folder.is_dir():
+        raise FileNotFoundError(f"artifact folder does not exist: {folder}")
+    expected_files = local_relative_files(folder)
+    if not expected_files:
+        raise FileNotFoundError(f"artifact folder contains no files: {folder}")
 
     hub_api = api or HfApi()
     with ipv4_only_dns(ipv4_only):
         commit = hub_api.upload_folder(
-            folder_path=run_dir,
+            folder_path=folder,
             repo_id=repo_id,
             path_in_repo=path_in_repo.strip("/"),
             repo_type=repo_type,
@@ -185,7 +220,7 @@ def publish_run(
             revision=revision,
         )
     remote_integrity = verify_remote_integrity(
-        run_dir,
+        folder,
         expected_files,
         remote_infos,
         path_in_repo=path_in_repo,
@@ -200,7 +235,7 @@ def publish_run(
         "verified_file_count": len(expected_files),
         "verified_files": list(expected_files),
         "remote_integrity": remote_integrity,
-        "artifact_manifest": manifest,
+        "publication_kind": "verified_folder",
     }
 
 
@@ -218,11 +253,20 @@ def main() -> None:
         action="store_true",
         help="ignore IPv6 DNS results when the local network has no working IPv6 route",
     )
+    parser.add_argument(
+        "--metadata-folder",
+        action="store_true",
+        help=(
+            "upload and digest-verify a non-run artifact folder without "
+            "claiming checkpoint-run audit semantics"
+        ),
+    )
     args = parser.parse_args()
 
     path_in_repo = args.path_in_repo or args.run_dir.name
     commit_message = args.commit_message or f"Publish verified run {args.run_dir.name}"
-    result = publish_run(
+    publish = publish_verified_folder if args.metadata_folder else publish_run
+    result = publish(
         args.run_dir,
         repo_id=args.repo_id,
         path_in_repo=path_in_repo,

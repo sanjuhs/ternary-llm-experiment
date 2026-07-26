@@ -12,9 +12,51 @@ from ternary_llm.publish_hf import (
     local_relative_files,
     missing_remote_files,
     publish_run,
+    publish_verified_folder,
     remote_path,
     verify_remote_integrity,
 )
+
+
+class VerifiedFolderApi:
+    def __init__(self, folder: Path, path_in_repo: str) -> None:
+        self.folder = folder
+        self.path_in_repo = path_in_repo
+        self.uploaded = False
+
+    def upload_folder(self, **kwargs: object) -> SimpleNamespace:
+        assert Path(str(kwargs["folder_path"])) == self.folder
+        self.uploaded = True
+        return SimpleNamespace(oid="commit-123")
+
+    def list_repo_files(self, **_kwargs: object) -> list[str]:
+        return [
+            remote_path(self.path_in_repo, name)
+            for name in local_relative_files(self.folder)
+        ]
+
+    def get_paths_info(
+        self,
+        *,
+        paths: list[str],
+        **_kwargs: object,
+    ) -> list[SimpleNamespace]:
+        infos = []
+        for remote_name in paths:
+            relative = remote_name.removeprefix(self.path_in_repo.strip("/") + "/")
+            path = self.folder / relative
+            digest = hashlib.sha1(
+                f"blob {path.stat().st_size}\0".encode() + path.read_bytes()
+            ).hexdigest()
+            infos.append(
+                SimpleNamespace(
+                    path=remote_name,
+                    size=path.stat().st_size,
+                    blob_id=digest,
+                    lfs=None,
+                )
+            )
+        return infos
 
 
 def test_local_relative_files_are_sorted_and_ignore_git(tmp_path: Path) -> None:
@@ -141,3 +183,31 @@ def test_publish_run_rejects_incomplete_checksums_before_upload(
             ipv4_only=False,
             api=UnexpectedApi(),  # type: ignore[arg-type]
         )
+
+
+def test_publish_verified_folder_uploads_without_run_semantics(
+    tmp_path: Path,
+) -> None:
+    folder = tmp_path / "comparison"
+    folder.mkdir()
+    (folder / "comparison.json").write_text('{"winner":"integer"}\n')
+    (folder / "SUCCESS").write_text("complete\n")
+    api = VerifiedFolderApi(folder.resolve(), "experiments/comparison")
+
+    result = publish_verified_folder(
+        folder,
+        repo_id="owner/repo",
+        path_in_repo="experiments/comparison",
+        repo_type="model",
+        commit_message="publish comparison",
+        ipv4_only=False,
+        api=api,  # type: ignore[arg-type]
+    )
+
+    assert api.uploaded
+    assert result["publication_kind"] == "verified_folder"
+    assert result["verified_file_count"] == 2
+    assert result["remote_integrity"] == {
+        "git_blob_sha1": 2,
+        "lfs_sha256": 0,
+    }
