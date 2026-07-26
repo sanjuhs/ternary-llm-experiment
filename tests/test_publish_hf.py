@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
+import pytest
+
+from ternary_llm.artifacts import ArtifactValidationError
 from ternary_llm.publish_hf import (
     ipv4_only_dns,
     local_relative_files,
     missing_remote_files,
+    publish_run,
     remote_path,
 )
 
@@ -42,3 +47,41 @@ def test_ipv4_context_does_not_patch_when_disabled() -> None:
     with ipv4_only_dns(False):
         assert socket.getaddrinfo is original
     assert socket.getaddrinfo is original
+
+
+def test_publish_run_rejects_incomplete_checksums_before_upload(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    checkpoint = run_dir / "checkpoint.pt"
+    checkpoint.write_bytes(b"checkpoint")
+    (run_dir / "resolved-config.json").write_text("{}\n")
+    (run_dir / "metrics.jsonl").write_text(
+        '{"type":"validation","loss":1.5}\n'
+    )
+    (run_dir / "full-validation.json").write_text(
+        '{"loss":1.5,"perplexity":4.48,"evaluated_tokens":100}\n'
+    )
+    (run_dir / "diagnostics.json").write_text("{}\n")
+    (run_dir / "generations.txt").write_text("Once upon a time.\n")
+    digest = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
+    (run_dir / "SHA256SUMS").write_text(f"{digest}  checkpoint.pt\n")
+
+    class UnexpectedApi:
+        def upload_folder(self, **kwargs: object) -> None:
+            raise AssertionError(f"upload should not be called: {kwargs}")
+
+    with pytest.raises(
+        ArtifactValidationError,
+        match="missing required artifacts",
+    ):
+        publish_run(
+            run_dir,
+            repo_id="owner/repo",
+            path_in_repo="run",
+            repo_type="model",
+            commit_message="test",
+            ipv4_only=False,
+            api=UnexpectedApi(),  # type: ignore[arg-type]
+        )

@@ -81,9 +81,12 @@ def publish_run(
     ipv4_only: bool,
     api: HfApi | None = None,
 ) -> dict[str, Any]:
-    """Audit, upload, and remotely enumerate one completed experiment run."""
+    """Checksum-audit, upload, and remotely enumerate a completed run."""
     run_dir = run_dir.resolve()
-    manifest = build_run_manifest(run_dir)
+    manifest = build_run_manifest(
+        run_dir,
+        require_complete_checksums=True,
+    )
     manifest_path = run_dir / "artifact-manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     expected_files = local_relative_files(run_dir)
