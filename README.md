@@ -272,8 +272,8 @@ scripts/remote_integer_rmsnorm_screen.sh
 
 # This fails closed unless every stage and checksum-complete run succeeded:
 ternary-overnight-summary artifacts/tinystories-28m \
-  --json-output artifacts/tinystories-28m/overnight-summary.json \
-  --markdown-output artifacts/tinystories-28m/overnight-summary.md
+  --json-output artifacts/tinystories-28m/overnight-summary/summary.json \
+  --markdown-output artifacts/tinystories-28m/overnight-summary/summary.md
 ```
 
 The refinement scripts are ordered and idempotent: each requires the prior
