@@ -177,6 +177,8 @@ for arm in token learned_head; do
     > "${run_dir}/packed-export.json"
 
   sha256sum "${run_dir}/checkpoint.pt" > "${run_dir}/SHA256SUMS"
+  uv run ternary-audit-artifacts "${run_dir}" \
+    > "${run_dir}/artifact-audit.json"
 done
 
 uv run python - "${experiment}" "${selected_initial}" <<'PY'

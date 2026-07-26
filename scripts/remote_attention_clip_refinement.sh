@@ -157,5 +157,7 @@ uv run ternary-export \
   > "${run_dir}/packed-export.json"
 
 sha256sum "${run_dir}/checkpoint.pt" > "${run_dir}/SHA256SUMS"
+uv run ternary-audit-artifacts "${run_dir}" \
+  > "${run_dir}/artifact-audit.json"
 printf 'selected_clip=%s\nrun_dir=%s\n' \
   "${selection}" "${run_dir}" > "${experiment}/SUCCESS"
