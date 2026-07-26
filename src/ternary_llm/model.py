@@ -19,6 +19,7 @@ from ternary_llm.quantization import (
     requires_coat_calibration,
     residual_refinement_activation_codes,
     ternarize_activation,
+    ternarize_activation_with_learned_scale,
     ternarize_weight,
     ternary_activation_codes,
     uses_activation_projection,
@@ -141,8 +142,21 @@ class CausalSelfAttention(nn.Module):
         self.attention_clip = config.attention_clip
         self.attention_threshold = config.attention_threshold
         self.qkv_quantization = config.qkv_quantization
+        self.qkv_scale_granularity = config.qkv_scale_granularity
         self.attention_rectification = config.attention_rectification
         self.attention_gate = config.attention_gate
+        if (
+            self.qkv_quantization == "ternary"
+            and self.qkv_scale_granularity == "learned_head"
+        ):
+            self.qkv_log_scales = nn.Parameter(
+                torch.full(
+                    (3, self.n_heads),
+                    math.log(config.qkv_scale_initial),
+                )
+            )
+        else:
+            self.register_parameter("qkv_log_scales", None)
         if self.attention_rectification == "qvit":
             parameter_shape = (1, self.n_heads, 1, self.head_size)
             self.q_gamma = nn.Parameter(torch.ones(parameter_shape))
@@ -168,6 +182,7 @@ class CausalSelfAttention(nn.Module):
         self.last_q: Tensor | None = None
         self.last_k: Tensor | None = None
         self.last_probabilities: Tensor | None = None
+        self.last_qkv_scale_stats: dict[str, float] = {}
 
     @staticmethod
     def _standardize(tensor: Tensor) -> Tensor:
@@ -196,12 +211,44 @@ class CausalSelfAttention(nn.Module):
     ) -> tuple[Tensor, Tensor, Tensor, dict[str, Tensor]]:
         code_tensors: dict[str, Tensor] = {}
         if self.qkv_quantization == "ternary":
+            if self.qkv_scale_granularity == "learned_head":
+                if self.qkv_log_scales is None:
+                    raise AssertionError("learned QKV scales are missing")
+                quantized_tensors = []
+                scale_stats = {}
+                for index, (name, tensor) in enumerate((("q", q), ("k", k), ("v", v))):
+                    scale = self.qkv_log_scales[index].exp().view(
+                        1,
+                        self.n_heads,
+                        1,
+                        1,
+                    )
+                    quantized, codes = ternarize_activation_with_learned_scale(
+                        tensor,
+                        scale,
+                        self.activation_threshold,
+                    )
+                    quantized_tensors.append(quantized)
+                    code_tensors[name] = codes
+                    detached_scale = scale.detach()
+                    scale_stats[f"{name}_scale_mean"] = float(
+                        detached_scale.mean().item()
+                    )
+                    scale_stats[f"{name}_scale_min"] = float(
+                        detached_scale.min().item()
+                    )
+                    scale_stats[f"{name}_scale_max"] = float(
+                        detached_scale.max().item()
+                    )
+                self.last_qkv_scale_stats = scale_stats
+                return (*quantized_tensors, code_tensors)
             for name, tensor in (("q", q), ("k", k), ("v", v)):
                 codes, _ = ternary_activation_codes(
                     tensor,
                     self.activation_threshold,
                 )
                 code_tensors[name] = codes
+            self.last_qkv_scale_stats = {}
             return (
                 ternarize_activation(q, self.activation_threshold),
                 ternarize_activation(k, self.activation_threshold),
@@ -334,6 +381,7 @@ class CausalSelfAttention(nn.Module):
                         stats[f"{name}_{label}_fraction"] = float(
                             (codes == code).to(torch.float32).mean().item()
                         )
+                stats.update(self.last_qkv_scale_stats)
                 if gate is not None:
                     stats["gate_mean"] = float(gate.mean().item())
                 if gate_codes is not None:

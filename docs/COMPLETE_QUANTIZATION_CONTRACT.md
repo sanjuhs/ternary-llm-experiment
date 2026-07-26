@@ -30,6 +30,12 @@ scale, following BWTA, against fixed-point scale multipliers and scale-bucketed
 value planes. Until one of those paths is validated, “ternary V operand” is
 true, while “pure binary-by-ternary Route·V kernel” remains a target.
 
+The learned head-shared branch is now executable. Each attention block stores
+three small vectors of positive scales—one Q, K, and V value per head. The
+large tensors remain ternary codes; Q·K and Route·V use the packed codes, and
+the corresponding scale products can be applied after accumulation. This is an
+opt-in experiment and does not alter the running per-token-scale baseline.
+
 ## What cannot literally stay in two bits
 
 Dot products sum hundreds of products. Softmax also sums a row of exponentials.

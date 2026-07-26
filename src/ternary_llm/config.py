@@ -29,6 +29,12 @@ VALID_ATTENTION_QUANTIZATIONS: tuple[AttentionQuantization, ...] = (
 QKVQuantization = Literal["inherit", "ternary"]
 VALID_QKV_QUANTIZATIONS: tuple[QKVQuantization, ...] = ("inherit", "ternary")
 
+QKVScaleGranularity = Literal["token", "learned_head"]
+VALID_QKV_SCALE_GRANULARITIES: tuple[QKVScaleGranularity, ...] = (
+    "token",
+    "learned_head",
+)
+
 AttentionRectification = Literal["none", "qvit"]
 VALID_ATTENTION_RECTIFICATIONS: tuple[AttentionRectification, ...] = ("none", "qvit")
 
@@ -94,6 +100,8 @@ class ModelConfig:
     attention_clip: float = 6.0
     attention_threshold: float = 0.5
     qkv_quantization: QKVQuantization = "inherit"
+    qkv_scale_granularity: QKVScaleGranularity = "token"
+    qkv_scale_initial: float = 0.5
     attention_rectification: AttentionRectification = "none"
     attention_gate: AttentionGate = "none"
     attention_gate_initial: float = 0.9
@@ -150,6 +158,21 @@ class ModelConfig:
                 f"qkv_quantization must be one of {VALID_QKV_QUANTIZATIONS}, "
                 f"got {self.qkv_quantization!r}"
             )
+        if self.qkv_scale_granularity not in VALID_QKV_SCALE_GRANULARITIES:
+            raise ValueError(
+                "qkv_scale_granularity must be one of "
+                f"{VALID_QKV_SCALE_GRANULARITIES}, "
+                f"got {self.qkv_scale_granularity!r}"
+            )
+        if (
+            self.qkv_scale_granularity != "token"
+            and self.qkv_quantization != "ternary"
+        ):
+            raise ValueError(
+                "non-token QKV scales require qkv_quantization='ternary'"
+            )
+        if self.qkv_scale_initial <= 0:
+            raise ValueError("qkv_scale_initial must be positive")
         if self.attention_rectification not in VALID_ATTENTION_RECTIFICATIONS:
             raise ValueError(
                 "attention_rectification must be one of "

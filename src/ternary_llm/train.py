@@ -23,6 +23,7 @@ from ternary_llm.config import (
     VALID_FEED_FORWARD_ACTIVATIONS,
     VALID_MODES,
     VALID_QKV_QUANTIZATIONS,
+    VALID_QKV_SCALE_GRANULARITIES,
     ExperimentConfig,
     ModelConfig,
     load_config,
@@ -474,6 +475,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--attention-threshold", type=float)
     parser.add_argument("--qkv-quantization", choices=VALID_QKV_QUANTIZATIONS)
     parser.add_argument(
+        "--qkv-scale-granularity",
+        choices=VALID_QKV_SCALE_GRANULARITIES,
+    )
+    parser.add_argument("--qkv-scale-initial", type=float)
+    parser.add_argument(
         "--attention-rectification",
         choices=VALID_ATTENTION_RECTIFICATIONS,
     )
@@ -597,6 +603,10 @@ def main() -> None:
         model_overrides["attention_threshold"] = args.attention_threshold
     if args.qkv_quantization:
         model_overrides["qkv_quantization"] = args.qkv_quantization
+    if args.qkv_scale_granularity:
+        model_overrides["qkv_scale_granularity"] = args.qkv_scale_granularity
+    if args.qkv_scale_initial is not None:
+        model_overrides["qkv_scale_initial"] = args.qkv_scale_initial
     if args.attention_rectification:
         model_overrides["attention_rectification"] = args.attention_rectification
     if args.attention_gate:

@@ -185,6 +185,40 @@ def test_gated_rectified_attention_forces_ternary_qkv() -> None:
     assert stats["gate_open_fraction"] == 1.0
 
 
+def test_learned_head_qkv_scales_receive_gradients_and_report_stats() -> None:
+    config = ModelConfig(
+        vocab_size=300,
+        context_length=8,
+        d_model=16,
+        n_layers=1,
+        n_heads=2,
+        ff_multiplier=2,
+        qkv_quantization="ternary",
+        qkv_scale_granularity="learned_head",
+        qkv_scale_initial=0.5,
+        attention_quantization="score_lut_prob_int2",
+    )
+    model = TernaryGPT(config, "ternary_weights").eval()
+    inputs = torch.randint(0, config.vocab_size, (2, config.context_length))
+    _, loss = model(inputs, inputs)
+
+    assert loss is not None and torch.isfinite(loss)
+    loss.backward()
+    scale_parameters = [
+        parameter
+        for name, parameter in model.named_parameters()
+        if name.endswith("qkv_log_scales")
+    ]
+    assert len(scale_parameters) == config.n_layers
+    assert all(
+        parameter.grad is not None and torch.isfinite(parameter.grad).all()
+        for parameter in scale_parameters
+    )
+    stats = model.attention_stats()["aggregate"]
+    for name in ("q", "k", "v"):
+        assert stats[f"{name}_scale_mean"] == pytest.approx(0.5)
+
+
 def test_attention_and_qk_distillation_compute_student_gradients() -> None:
     from dataclasses import replace
 

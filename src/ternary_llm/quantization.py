@@ -311,6 +311,33 @@ def ternary_activation_codes(
     return ternary_code(tensor.detach() / scale, threshold), scale
 
 
+def ternarize_activation_with_learned_scale(
+    tensor: Tensor,
+    scale: Tensor,
+    threshold: float = 0.5,
+    *,
+    eps: float = 1e-5,
+) -> tuple[Tensor, Tensor]:
+    """Ternarize with a broadcastable learned scale and STE gradients.
+
+    Codes are selected from detached values and scales. The returned activation
+    passes an identity gradient to the shadow activation and a code-weighted
+    gradient to the scale, while its forward values are exactly code * scale.
+    """
+    positive_scale = scale.clamp_min(eps)
+    codes = ternary_code(
+        tensor.detach() / positive_scale.detach(),
+        threshold,
+    )
+    dequantized = codes * positive_scale
+    quantized = (
+        tensor
+        + (dequantized - tensor).detach()
+        + (dequantized - dequantized.detach())
+    )
+    return quantized, codes
+
+
 def ternary_qk_attention_reference(
     query: Tensor,
     key: Tensor,

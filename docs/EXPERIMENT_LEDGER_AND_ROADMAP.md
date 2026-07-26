@@ -357,6 +357,14 @@ although it uses finer per-vector scales. Our current per-token V scales cannot
 all be moved outside Route·V, so a learned shared V scale is now an explicit
 ASIC-hardening experiment rather than an unverified assumption.
 
+That ablation is implemented as `qkv_scale_granularity = "learned_head"`.
+It learns one positive scale for each Q/K/V head, uses exact ternary forward
+codes, and passes STE gradients to both the shadow activation and scale. After
+the attention-clip refinement, a matched stage will screen initial scales 0.25,
+0.5, 0.75, and 1.0 on the same 200 batches, adapt only the winner for 4,000
+steps, and run exhaustive validation. This isolates the quality price of making
+the scale factorizable outside both attention matmuls.
+
 ### EXAQ
 
 [EXAQ](https://openreview.net/forum?id=AuJ6gDjcZK) shows that the shifted softmax

@@ -15,6 +15,7 @@ from ternary_llm.quantization import (
     residual_refinement_activation_codes,
     ternarize,
     ternarize_activation,
+    ternarize_activation_with_learned_scale,
     ternary_activation_codes,
     ternary_code,
     ternary_qk_attention_reference,
@@ -246,3 +247,18 @@ def test_ternary_qk_reference_matches_reconstructed_attention_scores() -> None:
     assert accumulators.shape == (2, 3, 4, 5)
     assert accumulators.abs().max().item() <= 8
     assert torch.allclose(scores, expected, atol=1e-6, rtol=1e-6)
+
+
+def test_learned_scale_ternarization_updates_shadow_and_scale() -> None:
+    values = torch.tensor([[-0.8, -0.1, 0.7]], requires_grad=True)
+    log_scale = torch.tensor(0.5).log().requires_grad_()
+    quantized, codes = ternarize_activation_with_learned_scale(
+        values,
+        log_scale.exp(),
+    )
+
+    assert set(codes.unique().tolist()) <= {-1.0, 0.0, 1.0}
+    assert torch.equal(quantized.detach(), codes * 0.5)
+    quantized.square().sum().backward()
+    assert values.grad is not None and torch.isfinite(values.grad).all()
+    assert log_scale.grad is not None and log_scale.grad.abs().item() > 0
