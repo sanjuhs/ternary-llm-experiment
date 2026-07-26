@@ -450,7 +450,7 @@ all four probability codes `[0, 1, 2, 3]`. The sweep still allows the data to
 reject that theoretical advantage if a different clip produces lower loss.
 
 The longer clip-3 control is still running. Its matched validation trajectory
-through step 24,000 is:
+through step 26,000 is:
 
 | Step | Validation loss | Perplexity | Zero routes | Attention entropy | Residual NMSE |
 |---:|---:|---:|---:|---:|---:|
@@ -465,16 +465,20 @@ through step 24,000 is:
 | 18,000 | 2.292726 | 9.9019 | 87.96% | 1.8620 | 0.02274 |
 | 20,000 | 2.295187 | 9.9263 | 88.15% | 1.8451 | 0.02287 |
 | 22,000 | 2.284187 | 9.8177 | 88.21% | 1.8340 | 0.02319 |
-| 24,000 | 2.306608 | 10.0403 | **88.27%** | **1.8314** | **0.02332** |
+| 24,000 | 2.306608 | 10.0403 | 88.27% | 1.8314 | **0.02332** |
+| 26,000 | 2.316209 | 10.1372 | **88.36%** | **1.8254** | 0.02327 |
 
 The last 2,000 steps recovered only 0.000397 loss while route sparsity and
 residual error continued to rise; the following three 2,000-step intervals then
 regressed by 0.006134, 0.023934, and 0.012236 loss, followed by a smaller
 0.002461 regression at 20k. Step 22k recovered 0.011000, but remained 0.033766
 worse than the 12k minimum while route sparsity and residual error reached new
-highs. Step 24k then worsened by 0.022421 and ended 0.056186 above the 12k
-minimum, erasing the prior interval's partial recovery. The current geometry
-has therefore reached a measured plateau followed by sustained degradation.
+highs. Step 24k then worsened by 0.022421 and step 26k lost another 0.009601,
+ending 0.065787 above the 12k minimum and erasing the prior interval's partial
+recovery. Residual NMSE eased slightly at 26k, but route sparsity rose and
+attention entropy fell again; attention collapse is therefore the clearest
+continuing failure signal. The current geometry has reached a measured plateau
+followed by sustained degradation.
 The control still must not be stopped early: completing its predeclared budget
 prevents an adaptive stopping decision from biasing the comparison. The rising
 zero-route fraction, falling entropy, and permanently unused probability code
