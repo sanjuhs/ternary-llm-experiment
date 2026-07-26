@@ -365,6 +365,14 @@ the attention-clip refinement, a matched stage will screen initial scales 0.25,
 steps, and run exhaustive validation. This isolates the quality price of making
 the scale factorizable outside both attention matmuls.
 
+A one-step integration smoke loaded the real 27.4M ternary-weight checkpoint
+through this new path, trained, validated, saved, reloaded, and generated text
+on CPU. It added exactly 192 parameters—three scales × eight heads × eight
+layers. Every scale and gradient remained finite, and clip 2 exercised all four
+route codes. The immediate one-step loss is not a quality result: converting an
+unadapted per-token-scale checkpoint abruptly is intentionally harsh, which is
+why the queued experiment screens initialization and performs matched QAT.
+
 ### EXAQ
 
 [EXAQ](https://openreview.net/forum?id=AuJ6gDjcZK) shows that the shifted softmax
