@@ -30,36 +30,119 @@ if [[ ! -s "${normalization_experiment}/SUCCESS" ]]; then
 fi
 
 selected_clip="$(jq -r '.selected_clip' "${clip_experiment}/selection.json")"
-selected_initial="$(
-  jq -r '.selected_initial_scale' "${scale_experiment}/selection.json"
-)"
-selected_normalization="$(
-  jq -r '.selected_normalization' "${normalization_experiment}/comparison.json"
-)"
+mkdir -p "${experiment}"
 
-case "${selected_normalization}" in
-  softmax)
-    source_run="softmax-control-refine"
-    ;;
-  softmax1)
-    source_run="softmax1-no-update-refine"
-    ;;
-  *)
-    echo "unsupported selected normalization: ${selected_normalization}" >&2
-    exit 1
-    ;;
-esac
-source_run_dir="${base}/${source_run}"
-if [[ -s "${source_run_dir}/best-checkpoint.pt" ]]; then
-  source_checkpoint="${source_run_dir}/best-checkpoint.pt"
-elif [[ -s "${source_run_dir}/checkpoint.pt" ]]; then
-  source_checkpoint="${source_run_dir}/checkpoint.pt"
+# Reject a refinement stage when both fixed-budget arms are worse than the
+# checkpoint that entered it. Compare the original Softmax source and each
+# arm's retained best checkpoint on identical batches.
+normalization_source_checkpoint="$(
+  <"${normalization_experiment}/source-checkpoint.txt"
+)"
+softmax_run="${base}/softmax-control-refine"
+softmax1_run="${base}/softmax1-no-update-refine"
+if [[ -s "${softmax_run}/best-checkpoint.pt" ]]; then
+  softmax_checkpoint="${softmax_run}/best-checkpoint.pt"
+elif [[ -s "${softmax_run}/checkpoint.pt" ]]; then
+  softmax_checkpoint="${softmax_run}/checkpoint.pt"
 else
-  echo "selected normalization checkpoint is missing" >&2
+  echo "matched Softmax checkpoint is missing" >&2
+  exit 1
+fi
+if [[ -s "${softmax1_run}/best-checkpoint.pt" ]]; then
+  softmax1_checkpoint="${softmax1_run}/best-checkpoint.pt"
+elif [[ -s "${softmax1_run}/checkpoint.pt" ]]; then
+  softmax1_checkpoint="${softmax1_run}/checkpoint.pt"
+else
+  echo "Softmax1 checkpoint is missing" >&2
   exit 1
 fi
 
-mkdir -p "${experiment}"
+for declaration in \
+  "step-zero:${normalization_source_checkpoint}" \
+  "softmax-refined:${softmax_checkpoint}" \
+  "softmax1-refined:${softmax1_checkpoint}"
+do
+  IFS=: read -r candidate checkpoint <<< "${declaration}"
+  uv run ternary-evaluate \
+    --config "${config}" \
+    --checkpoint "${checkpoint}" \
+    --device cuda \
+    --batches 200 \
+    > "${experiment}/source-candidate-${candidate}.json"
+done
+
+source_checkpoint="$(
+  uv run python - \
+    "${experiment}" \
+    "${normalization_experiment}/source-selection.json" \
+    "${normalization_source_checkpoint}" \
+    "${softmax_checkpoint}" \
+    "${softmax1_checkpoint}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+inherited = json.loads(Path(sys.argv[2]).read_text())
+candidates = {
+    "step_zero": {
+        "checkpoint": sys.argv[3],
+        "loss": json.loads(
+            (root / "source-candidate-step-zero.json").read_text()
+        )["loss"],
+        "attention_normalization": "softmax",
+    },
+    "softmax_refined_best": {
+        "checkpoint": sys.argv[4],
+        "loss": json.loads(
+            (root / "source-candidate-softmax-refined.json").read_text()
+        )["loss"],
+        "attention_normalization": "softmax",
+    },
+    "softmax1_refined_best": {
+        "checkpoint": sys.argv[5],
+        "loss": json.loads(
+            (root / "source-candidate-softmax1-refined.json").read_text()
+        )["loss"],
+        "attention_normalization": "softmax1",
+    },
+}
+winner = min(candidates, key=lambda name: candidates[name]["loss"])
+selected = candidates[winner]
+payload = {
+    "selection_metric": "matched 200-batch validation loss",
+    "candidates": candidates,
+    "selected_candidate": winner,
+    "selected_checkpoint": selected["checkpoint"],
+    "selected_attention_normalization": selected["attention_normalization"],
+    "selected_feed_forward_activation": "gelu",
+    "selected_qkv_scale_granularity": inherited[
+        "selected_qkv_scale_granularity"
+    ],
+    "selected_qkv_scale_initial": inherited["selected_qkv_scale_initial"],
+}
+(root / "source-selection.json").write_text(
+    json.dumps(payload, indent=2) + "\n"
+)
+print(selected["checkpoint"])
+PY
+)"
+selected_normalization="$(
+  jq -r '.selected_attention_normalization' \
+    "${experiment}/source-selection.json"
+)"
+selected_scale_granularity="$(
+  jq -r '.selected_qkv_scale_granularity' \
+    "${experiment}/source-selection.json"
+)"
+selected_scale_initial="$(
+  jq -r '.selected_qkv_scale_initial // empty' \
+    "${experiment}/source-selection.json"
+)"
+qkv_scale_args=(--qkv-scale-granularity "${selected_scale_granularity}")
+if [[ "${selected_scale_granularity}" == "learned_head" ]]; then
+  qkv_scale_args+=(--qkv-scale-initial "${selected_scale_initial}")
+fi
 printf '%s\n' "${source_checkpoint}" > "${experiment}/source-checkpoint.txt"
 
 # ReLU removes GELU's tanh/polynomial approximation from the deployed FFN.
@@ -82,8 +165,7 @@ for activation in gelu relu; do
       --activation-encoding residual_ternary \
       --activation-planes 3 \
       --qkv-quantization ternary \
-      --qkv-scale-granularity learned_head \
-      --qkv-scale-initial "${selected_initial}" \
+      "${qkv_scale_args[@]}" \
       --attention-quantization score_lut_prob_int2 \
       --attention-normalization "${selected_normalization}" \
       --attention-clip "${selected_clip}" \

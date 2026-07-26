@@ -101,3 +101,28 @@ def test_shared_scale_stage_compares_screen_with_refinement_best() -> None:
     assert "source-candidate-refined-best.json" in source
     assert "source-selection.json" in source
     assert '"selected_candidate": winner' in source
+
+
+def test_every_later_stage_can_reject_a_regressing_predecessor() -> None:
+    for name in (
+        "remote_softmax1_refinement.sh",
+        "remote_relu_hardening.sh",
+        "remote_binary_qk_fallback.sh",
+        "remote_integer_rmsnorm_screen.sh",
+    ):
+        source = _read(name)
+        assert "source-candidate-step-zero.json" in source, name
+        assert "source-selection.json" in source, name
+        assert '"selected_candidate": winner' in source, name
+
+
+def test_selected_qkv_scale_contract_propagates_past_scale_stage() -> None:
+    for name in (
+        "remote_softmax1_refinement.sh",
+        "remote_relu_hardening.sh",
+        "remote_binary_qk_fallback.sh",
+    ):
+        source = _read(name)
+        assert "selected_qkv_scale_granularity" in source, name
+        assert "selected_qkv_scale_initial" in source, name
+        assert 'qkv_scale_args=(--qkv-scale-granularity' in source, name

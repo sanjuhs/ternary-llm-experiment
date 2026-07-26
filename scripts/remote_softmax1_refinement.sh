@@ -32,17 +32,121 @@ selected_clip="$(jq -r '.selected_clip' "${clip_experiment}/selection.json")"
 selected_initial="$(
   jq -r '.selected_initial_scale' "${scale_experiment}/selection.json"
 )"
-source_run="${base}/shared-head-qkv-scale-${selected_initial}-refine"
-if [[ -s "${source_run}/best-checkpoint.pt" ]]; then
-  source_checkpoint="${source_run}/best-checkpoint.pt"
-elif [[ -s "${source_run}/checkpoint.pt" ]]; then
-  source_checkpoint="${source_run}/checkpoint.pt"
+mkdir -p "${experiment}"
+
+# The shared-scale stage reports fixed-budget endpoints, but either trained arm
+# may be worse than the step-zero clip source. Re-evaluate all deployable
+# checkpoints identically before selecting the source for this stage.
+scale_source_checkpoint="$(<"${scale_experiment}/source-checkpoint.txt")"
+token_run="${base}/qkv-scale-token-control"
+learned_run="${base}/shared-head-qkv-scale-${selected_initial}-refine"
+if [[ -s "${token_run}/best-checkpoint.pt" ]]; then
+  token_checkpoint="${token_run}/best-checkpoint.pt"
+elif [[ -s "${token_run}/checkpoint.pt" ]]; then
+  token_checkpoint="${token_run}/checkpoint.pt"
+else
+  echo "matched token-scale checkpoint is missing" >&2
+  exit 1
+fi
+if [[ -s "${learned_run}/best-checkpoint.pt" ]]; then
+  learned_checkpoint="${learned_run}/best-checkpoint.pt"
+elif [[ -s "${learned_run}/checkpoint.pt" ]]; then
+  learned_checkpoint="${learned_run}/checkpoint.pt"
 else
   echo "shared-head QKV scale checkpoint is missing" >&2
   exit 1
 fi
 
-mkdir -p "${experiment}"
+uv run ternary-evaluate \
+  --config "${config}" \
+  --checkpoint "${scale_source_checkpoint}" \
+  --device cuda \
+  --batches 200 \
+  > "${experiment}/source-candidate-step-zero.json"
+uv run ternary-evaluate \
+  --config "${config}" \
+  --checkpoint "${token_checkpoint}" \
+  --device cuda \
+  --batches 200 \
+  > "${experiment}/source-candidate-token-refined.json"
+uv run ternary-evaluate \
+  --config "${config}" \
+  --checkpoint "${learned_checkpoint}" \
+  --device cuda \
+  --batches 200 \
+  > "${experiment}/source-candidate-learned-head-refined.json"
+
+source_checkpoint="$(
+  uv run python - \
+    "${experiment}" \
+    "${scale_source_checkpoint}" \
+    "${token_checkpoint}" \
+    "${learned_checkpoint}" \
+    "${selected_initial}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+candidates = {
+    "step_zero": {
+        "checkpoint": sys.argv[2],
+        "loss": json.loads(
+            (root / "source-candidate-step-zero.json").read_text()
+        )["loss"],
+        "qkv_scale_granularity": "token",
+        "qkv_scale_initial": None,
+    },
+    "token_refined_best": {
+        "checkpoint": sys.argv[3],
+        "loss": json.loads(
+            (root / "source-candidate-token-refined.json").read_text()
+        )["loss"],
+        "qkv_scale_granularity": "token",
+        "qkv_scale_initial": None,
+    },
+    "learned_head_refined_best": {
+        "checkpoint": sys.argv[4],
+        "loss": json.loads(
+            (root / "source-candidate-learned-head-refined.json").read_text()
+        )["loss"],
+        "qkv_scale_granularity": "learned_head",
+        "qkv_scale_initial": float(sys.argv[5]),
+    },
+}
+winner = min(candidates, key=lambda name: candidates[name]["loss"])
+selected = candidates[winner]
+(root / "source-selection.json").write_text(
+    json.dumps(
+        {
+            "selection_metric": "matched 200-batch validation loss",
+            "candidates": candidates,
+            "selected_candidate": winner,
+            "selected_checkpoint": selected["checkpoint"],
+            "selected_qkv_scale_granularity": selected[
+                "qkv_scale_granularity"
+            ],
+            "selected_qkv_scale_initial": selected["qkv_scale_initial"],
+        },
+        indent=2,
+    )
+    + "\n"
+)
+print(selected["checkpoint"])
+PY
+)"
+selected_scale_granularity="$(
+  jq -r '.selected_qkv_scale_granularity' \
+    "${experiment}/source-selection.json"
+)"
+selected_scale_initial="$(
+  jq -r '.selected_qkv_scale_initial // empty' \
+    "${experiment}/source-selection.json"
+)"
+qkv_scale_args=(--qkv-scale-granularity "${selected_scale_granularity}")
+if [[ "${selected_scale_granularity}" == "learned_head" ]]; then
+  qkv_scale_args+=(--qkv-scale-initial "${selected_scale_initial}")
+fi
 printf '%s\n' "${source_checkpoint}" > "${experiment}/source-checkpoint.txt"
 
 for normalization in softmax softmax1; do
@@ -51,6 +155,7 @@ for normalization in softmax softmax1; do
     --checkpoint "${source_checkpoint}" \
     --device cuda \
     --batches 200 \
+    "${qkv_scale_args[@]}" \
     --attention-normalization "${normalization}" \
     > "${experiment}/pre-adaptation-${normalization}.json"
 done
@@ -75,8 +180,7 @@ for normalization in softmax softmax1; do
       --activation-encoding residual_ternary \
       --activation-planes 3 \
       --qkv-quantization ternary \
-      --qkv-scale-granularity learned_head \
-      --qkv-scale-initial "${selected_initial}" \
+      "${qkv_scale_args[@]}" \
       --attention-quantization score_lut_prob_int2 \
       --attention-normalization "${normalization}" \
       --attention-clip "${selected_clip}" \

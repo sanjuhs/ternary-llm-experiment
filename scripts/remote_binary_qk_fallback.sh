@@ -31,39 +31,128 @@ if [[ ! -s "${activation_experiment}/SUCCESS" ]]; then
 fi
 
 selected_clip="$(jq -r '.selected_clip' "${clip_experiment}/selection.json")"
-selected_initial="$(
-  jq -r '.selected_initial_scale' "${scale_experiment}/selection.json"
-)"
-selected_normalization="$(
-  jq -r '.selected_normalization' "${normalization_experiment}/comparison.json"
-)"
-selected_activation="$(
-  jq -r '.selected_feed_forward_activation' "${activation_experiment}/comparison.json"
-)"
+mkdir -p "${experiment}"
 
-case "${selected_activation}" in
-  gelu)
-    source_name="ffn-gelu-control-refine"
-    ;;
-  relu)
-    source_name="ffn-relu-harden-refine"
-    ;;
-  *)
-    echo "unsupported selected feed-forward activation: ${selected_activation}" >&2
-    exit 1
-    ;;
-esac
-source_run="${base}/${source_name}"
-if [[ -s "${source_run}/best-checkpoint.pt" ]]; then
-  source_checkpoint="${source_run}/best-checkpoint.pt"
-elif [[ -s "${source_run}/checkpoint.pt" ]]; then
-  source_checkpoint="${source_run}/checkpoint.pt"
+# Compare the ReLU stage's incoming checkpoint with each arm's retained best
+# checkpoint. This lets the architecture change be rejected without losing a
+# better upstream model.
+activation_source_checkpoint="$(<"${activation_experiment}/source-checkpoint.txt")"
+gelu_run="${base}/ffn-gelu-control-refine"
+relu_run="${base}/ffn-relu-harden-refine"
+if [[ -s "${gelu_run}/best-checkpoint.pt" ]]; then
+  gelu_checkpoint="${gelu_run}/best-checkpoint.pt"
+elif [[ -s "${gelu_run}/checkpoint.pt" ]]; then
+  gelu_checkpoint="${gelu_run}/checkpoint.pt"
 else
-  echo "selected feed-forward checkpoint is missing" >&2
+  echo "matched GELU checkpoint is missing" >&2
+  exit 1
+fi
+if [[ -s "${relu_run}/best-checkpoint.pt" ]]; then
+  relu_checkpoint="${relu_run}/best-checkpoint.pt"
+elif [[ -s "${relu_run}/checkpoint.pt" ]]; then
+  relu_checkpoint="${relu_run}/checkpoint.pt"
+else
+  echo "ReLU checkpoint is missing" >&2
   exit 1
 fi
 
-mkdir -p "${experiment}"
+for declaration in \
+  "step-zero:${activation_source_checkpoint}" \
+  "gelu-refined:${gelu_checkpoint}" \
+  "relu-refined:${relu_checkpoint}"
+do
+  IFS=: read -r candidate checkpoint <<< "${declaration}"
+  uv run ternary-evaluate \
+    --config "${config}" \
+    --checkpoint "${checkpoint}" \
+    --device cuda \
+    --batches 200 \
+    > "${experiment}/source-candidate-${candidate}.json"
+done
+
+source_checkpoint="$(
+  uv run python - \
+    "${experiment}" \
+    "${activation_experiment}/source-selection.json" \
+    "${activation_source_checkpoint}" \
+    "${gelu_checkpoint}" \
+    "${relu_checkpoint}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+inherited = json.loads(Path(sys.argv[2]).read_text())
+candidates = {
+    "step_zero": {
+        "checkpoint": sys.argv[3],
+        "loss": json.loads(
+            (root / "source-candidate-step-zero.json").read_text()
+        )["loss"],
+        "feed_forward_activation": inherited[
+            "selected_feed_forward_activation"
+        ],
+    },
+    "gelu_refined_best": {
+        "checkpoint": sys.argv[4],
+        "loss": json.loads(
+            (root / "source-candidate-gelu-refined.json").read_text()
+        )["loss"],
+        "feed_forward_activation": "gelu",
+    },
+    "relu_refined_best": {
+        "checkpoint": sys.argv[5],
+        "loss": json.loads(
+            (root / "source-candidate-relu-refined.json").read_text()
+        )["loss"],
+        "feed_forward_activation": "relu",
+    },
+}
+winner = min(candidates, key=lambda name: candidates[name]["loss"])
+selected = candidates[winner]
+payload = {
+    "selection_metric": "matched 200-batch validation loss",
+    "candidates": candidates,
+    "selected_candidate": winner,
+    "selected_checkpoint": selected["checkpoint"],
+    "selected_qkv_quantization": "ternary",
+    "selected_feed_forward_activation": selected[
+        "feed_forward_activation"
+    ],
+    "selected_attention_normalization": inherited[
+        "selected_attention_normalization"
+    ],
+    "selected_qkv_scale_granularity": inherited[
+        "selected_qkv_scale_granularity"
+    ],
+    "selected_qkv_scale_initial": inherited["selected_qkv_scale_initial"],
+}
+(root / "source-selection.json").write_text(
+    json.dumps(payload, indent=2) + "\n"
+)
+print(selected["checkpoint"])
+PY
+)"
+selected_activation="$(
+  jq -r '.selected_feed_forward_activation' \
+    "${experiment}/source-selection.json"
+)"
+selected_normalization="$(
+  jq -r '.selected_attention_normalization' \
+    "${experiment}/source-selection.json"
+)"
+selected_scale_granularity="$(
+  jq -r '.selected_qkv_scale_granularity' \
+    "${experiment}/source-selection.json"
+)"
+selected_scale_initial="$(
+  jq -r '.selected_qkv_scale_initial // empty' \
+    "${experiment}/source-selection.json"
+)"
+qkv_scale_args=(--qkv-scale-granularity "${selected_scale_granularity}")
+if [[ "${selected_scale_granularity}" == "learned_head" ]]; then
+  qkv_scale_args+=(--qkv-scale-initial "${selected_scale_initial}")
+fi
 printf '%s\n' "${source_checkpoint}" > "${experiment}/source-checkpoint.txt"
 
 for qkv in ternary binary_qk_ternary_v; do
@@ -96,8 +185,7 @@ for qkv in ternary binary_qk_ternary_v; do
       --activation-encoding residual_ternary \
       --activation-planes 3 \
       --qkv-quantization "${qkv}" \
-      --qkv-scale-granularity learned_head \
-      --qkv-scale-initial "${selected_initial}" \
+      "${qkv_scale_args[@]}" \
       --attention-quantization score_lut_prob_int2 \
       --attention-normalization "${selected_normalization}" \
       --attention-clip "${selected_clip}" \

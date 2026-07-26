@@ -25,33 +25,109 @@ if [[ ! -s "${binary_experiment}/SUCCESS" ]]; then
   exit 1
 fi
 
-selected_qkv="$(
-  jq -r '.selected_qkv_quantization' "${binary_experiment}/comparison.json"
-)"
-case "${selected_qkv}" in
-  ternary)
-    source_name="binary-qk-ternary-control-refine"
-    ;;
-  binary_qk_ternary_v)
-    source_name="binary-qk-sign-distill-refine"
-    ;;
-  *)
-    echo "unsupported selected QKV quantization: ${selected_qkv}" >&2
-    exit 1
-    ;;
-esac
+mkdir -p "${experiment}"
 
-source_run="${base}/${source_name}"
-if [[ -s "${source_run}/best-checkpoint.pt" ]]; then
-  source_checkpoint="${source_run}/best-checkpoint.pt"
-elif [[ -s "${source_run}/checkpoint.pt" ]]; then
-  source_checkpoint="${source_run}/checkpoint.pt"
+# The binary-Q/K experiment may be rejected entirely. Compare its incoming
+# ternary checkpoint with the retained best checkpoint from each matched arm.
+binary_source_checkpoint="$(<"${binary_experiment}/source-checkpoint.txt")"
+ternary_run="${base}/binary-qk-ternary-control-refine"
+binary_run="${base}/binary-qk-sign-distill-refine"
+if [[ -s "${ternary_run}/best-checkpoint.pt" ]]; then
+  ternary_checkpoint="${ternary_run}/best-checkpoint.pt"
+elif [[ -s "${ternary_run}/checkpoint.pt" ]]; then
+  ternary_checkpoint="${ternary_run}/checkpoint.pt"
 else
-  echo "selected QKV checkpoint is missing" >&2
+  echo "matched ternary-QKV checkpoint is missing" >&2
+  exit 1
+fi
+if [[ -s "${binary_run}/best-checkpoint.pt" ]]; then
+  binary_checkpoint="${binary_run}/best-checkpoint.pt"
+elif [[ -s "${binary_run}/checkpoint.pt" ]]; then
+  binary_checkpoint="${binary_run}/checkpoint.pt"
+else
+  echo "binary-Q/K checkpoint is missing" >&2
   exit 1
 fi
 
-mkdir -p "${experiment}"
+for declaration in \
+  "step-zero:${binary_source_checkpoint}" \
+  "ternary-refined:${ternary_checkpoint}" \
+  "binary-qk-refined:${binary_checkpoint}"
+do
+  IFS=: read -r candidate checkpoint <<< "${declaration}"
+  uv run ternary-evaluate \
+    --config "${config}" \
+    --checkpoint "${checkpoint}" \
+    --device cuda \
+    --batches 200 \
+    > "${experiment}/source-candidate-${candidate}.json"
+done
+
+source_checkpoint="$(
+  /opt/ternary-llm-venv/bin/python - \
+    "${experiment}" \
+    "${binary_experiment}/source-selection.json" \
+    "${binary_source_checkpoint}" \
+    "${ternary_checkpoint}" \
+    "${binary_checkpoint}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+inherited = json.loads(Path(sys.argv[2]).read_text())
+candidates = {
+    "step_zero": {
+        "checkpoint": sys.argv[3],
+        "loss": json.loads(
+            (root / "source-candidate-step-zero.json").read_text()
+        )["loss"],
+        "qkv_quantization": inherited["selected_qkv_quantization"],
+    },
+    "ternary_refined_best": {
+        "checkpoint": sys.argv[4],
+        "loss": json.loads(
+            (root / "source-candidate-ternary-refined.json").read_text()
+        )["loss"],
+        "qkv_quantization": "ternary",
+    },
+    "binary_qk_refined_best": {
+        "checkpoint": sys.argv[5],
+        "loss": json.loads(
+            (root / "source-candidate-binary-qk-refined.json").read_text()
+        )["loss"],
+        "qkv_quantization": "binary_qk_ternary_v",
+    },
+}
+winner = min(candidates, key=lambda name: candidates[name]["loss"])
+selected = candidates[winner]
+payload = {
+    "selection_metric": "matched 200-batch validation loss",
+    "candidates": candidates,
+    "selected_candidate": winner,
+    "selected_checkpoint": selected["checkpoint"],
+    "selected_qkv_quantization": selected["qkv_quantization"],
+    "selected_feed_forward_activation": inherited[
+        "selected_feed_forward_activation"
+    ],
+    "selected_attention_normalization": inherited[
+        "selected_attention_normalization"
+    ],
+    "selected_qkv_scale_granularity": inherited[
+        "selected_qkv_scale_granularity"
+    ],
+    "selected_qkv_scale_initial": inherited["selected_qkv_scale_initial"],
+}
+(root / "source-selection.json").write_text(
+    json.dumps(payload, indent=2) + "\n"
+)
+print(selected["checkpoint"])
+PY
+)"
+selected_qkv="$(
+  jq -r '.selected_qkv_quantization' \
+    "${experiment}/source-selection.json"
+)"
 printf '%s\n' "${source_checkpoint}" > "${experiment}/source-checkpoint.txt"
 
 for normalization in float integer_reference; do
@@ -189,5 +265,5 @@ PY
   sha256sum --check SHA256SUMS
 )
 
-printf 'selected_qkv_quantization=%s\nsource_run=%s\n' \
-  "${selected_qkv}" "${source_name}" > "${experiment}/SUCCESS"
+printf 'selected_qkv_quantization=%s\nsource_checkpoint=%s\n' \
+  "${selected_qkv}" "${source_checkpoint}" > "${experiment}/SUCCESS"
