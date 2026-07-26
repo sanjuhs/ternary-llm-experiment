@@ -663,6 +663,11 @@ The July 2026 literature audit also rejects three tempting but invalid shortcuts
 - TurboAttention performs Q/K/V attention in INT8 and mixes INT2/INT4 KV heads;
 - BWLA's best stable joint result is W1A6 and its low-rank residual correction
   is not allowed by our inference contract.
+- [TurboBoA](https://arxiv.org/abs/2602.04929) improves attention-aware
+  weight-only PTQ with propagated-error compensation and joint-channel grid
+  refinement, but leaves activation and nonlinear arithmetic precision
+  unsolved. It is therefore a later calibration control, not a replacement for
+  the running activation-contract ladder.
 
 One new training route survives that audit without changing the inference
 contract:

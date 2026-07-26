@@ -785,6 +785,18 @@ quality degradation for pure INT2 and keeps the rest of the Transformer in
 FP16. Its integer dataflow supports our kernel design, while its precision
 choices do not satisfy the all-ternary contract.
 
+[TurboBoA](https://arxiv.org/abs/2602.04929), published at ICLR 2026, attacks a
+different failure mode: quantizing one weight matrix while pretending the
+other projections in the attention block are independent. It jointly
+quantizes output channels, compensates error propagated by earlier quantized
+layers, and refines the quantization grid with coordinate descent. That is a
+useful calibration idea for a future post-training ternarization control, but
+it remains a weight/PTQ method; it does not make Q/K/V activations, Softmax,
+normalization, or residual boundaries ternary. Our matched weight-only result
+is already much closer to its float teacher than the activation-constrained
+models are, so the present experiment correctly prioritizes activation and
+arithmetic-boundary training over another weight-only optimizer.
+
 [IntAttention](https://arxiv.org/abs/2511.21513) removes the remaining
 dequantize-softmax-requantize detour with a 32-entry exponential lookup table
 and direct integer normalization. It reports up to 3.7x attention speedup and
