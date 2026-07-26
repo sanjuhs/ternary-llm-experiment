@@ -1285,3 +1285,35 @@ but remained 0.010748 loss worse. This rejects the hypothesis for the current
 quality branch without invalidating the integer mechanism. Ordinary Softmax is
 selected; the Softmax-1 run, generations, packed export, and comparison are
 checksum-verified and published on Hugging Face.
+
+## ReLU is simpler and unexpectedly improves the large model
+
+GELU is a smooth curve. It works well in ordinary Transformers, but a ternary
+accelerator would need a lookup table or a higher-precision approximation to
+compute it. ReLU is only a sign test: negative values become zero and positive
+values pass through. That makes it a much cleaner target for a low-bit
+inference graph.
+
+We did not assume that simpler meant better. GELU and ReLU started from the
+same untouched checkpoint, saw the same examples in the same order, used the
+same teacher losses, and received exactly 4,000 adaptation steps. Their
+exhaustive results over 4,907,776 held-out targets were:
+
+| Feed-forward function | Loss | Perplexity |
+|---|---:|---:|
+| GELU control | 2.230903 | 9.3083 |
+| ReLU | **2.160893** | **8.6789** |
+
+ReLU improves loss by **0.070009**, so it wins on both simplicity and measured
+quality. The attention system remains active rather than collapsing: its
+entropy is 2.1415, all four route codes occur, and the largest zero-route share
+is 85.57%. Residual reconstruction normalized MSE is 0.02242.
+
+This is now the best exhaustive code-constrained model in the project, but the
+word “constrained” needs care. Its large matrix weights, Q/K/V codes, attention
+routes, and three residual planes are low-bit, while its per-token QKV scales
+are still data-dependent. The export therefore correctly reports that the
+strict ternary-operand contract is not satisfied. The separate hardware branch
+will combine ReLU with learned factorizable head scales and integer-reference
+RMSNorm, and its loss will be reported independently rather than hidden behind
+the better quality-branch number.

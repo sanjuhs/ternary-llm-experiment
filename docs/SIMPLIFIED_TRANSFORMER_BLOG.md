@@ -501,3 +501,18 @@ used it—about 1.5% of attention mass went to that card—but its full loss was
 the card is mathematically valid and trainable, yet it does not improve this
 model. We keep ordinary attention for the quality path and preserve the
 no-message version as evidence for future architectures.
+
+There was a happier surprise in the story-writing part of the network. Normal
+Transformers often use GELU, a smooth curved rule that is awkward for a tiny
+integer chip. We trained an otherwise identical model with ReLU, the much
+simpler rule “throw away negative numbers; keep positive numbers.” GELU scored
+**2.2309 loss**. ReLU scored **2.1609**, so the simpler rule actually wrote
+better stories in this matched test.
+
+That ReLU model is our best low-bit quality result so far. It still is not the
+finished ternary machine, because every token is allowed to choose a changing
+Q/K/V measuring scale. The final hardware test removes that freedom: it uses
+one stable scale per attention head, ternary Q/K/V, ReLU, tiny integer
+attention choices, and integer normalization. We will show its separate score
+even if it is worse. This keeps two claims honest: how well the model tells a
+story, and how completely its large inference operations fit a ternary chip.

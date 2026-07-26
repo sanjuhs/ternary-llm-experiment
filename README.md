@@ -35,14 +35,16 @@ tokenizer, TinyStories validation stream, and 4,907,776 evaluated targets:
 | Float control | **1.344198** | **3.8351** |
 | Ternary weights, ordinary activations | **1.535463** | **4.6435** |
 | Ternary weights, four-bit residual activations | **1.800118** | **6.0504** |
-| Ternary weights/Q/K/V, two-bit integer attention, three ternary residual planes (dynamic token scales) | **2.230903** | **9.3083** |
+| Ternary weights/Q/K/V, two-bit integer attention, three ternary residual planes, ReLU (dynamic token scales) | **2.160893** | **8.6789** |
 
 The final row is the best exhaustive code-constrained result so far, but it is
 not float-quality parity or the strict hardware endpoint. Three ternary residual
 planes occupy six physical code bits per scalar, and dynamic per-token QKV
 scales keep its exported operand contract from passing. The matched
 factorizable per-head-scale arm reaches 2.309650 loss, exposing a real 0.078748
-quality cost. The active refinement chain therefore preserves two endpoints. A
+quality cost in the earlier GELU comparison. Replacing GELU with ReLU under a
+matched 4,000-step budget improves exhaustive loss by 0.070009. The active
+refinement chain therefore preserves two endpoints. A
 regression-safe quality branch may reject stricter components; a separate
 hardware branch must pass the exported ternary operand contract with
 factorizable per-head scales, ReLU, and integer RMSNorm. Neither branch claims

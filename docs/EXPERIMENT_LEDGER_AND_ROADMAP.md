@@ -522,6 +522,24 @@ comparison therefore selects ordinary Softmax. Both run directories and the
 comparison metadata passed local checksums, artifact audits, and remote
 Hugging Face integrity verification.
 
+The matched feed-forward hardening stage is complete as well:
+
+| Feed-forward activation | 200-batch loss after 2k | 200-batch loss after 4k | Exhaustive loss | Perplexity |
+|---|---:|---:|---:|---:|
+| GELU control | 2.248145 | 2.242133 | 2.230903 | 9.3083 |
+| ReLU | **2.185152** | **2.172089** | **2.160893** | **8.6789** |
+
+The arms started from the same untouched source, used the same optimizer,
+teacher losses, data order, and 4,000-step budget, and differed only in the
+feed-forward activation. ReLU improves exhaustive loss by **0.070009** while
+also removing GELU's curved floating-point approximation from the intended
+inference graph. All attention codes remain active; the exhaustive ReLU model
+has attention entropy 2.1415, 85.57% zero routes, and residual normalized MSE
+0.02242. This is the new best code-constrained quality result. Its operand
+contract is still false because this quality branch retains dynamic per-token
+QKV scales; it is not being mislabeled as the strict endpoint. Both matched
+runs and their comparison are checksum-audited and published on Hugging Face.
+
 Every later quality-stage handoff now compares its untouched input with the
 retained best checkpoint from both matched arms, preventing two regressions
 from displacing a better model. Because that rule may reject hardware-friendly
