@@ -256,13 +256,20 @@ scripts/remote_shared_qkv_scale_refinement.sh
 scripts/remote_softmax1_refinement.sh
 scripts/remote_relu_hardening.sh
 scripts/remote_binary_qk_fallback.sh
+
+# This fails closed unless every stage and checksum-complete run succeeded:
+ternary-overnight-summary artifacts/tinystories-28m \
+  --json-output artifacts/tinystories-28m/overnight-summary.json \
+  --markdown-output artifacts/tinystories-28m/overnight-summary.md
 ```
 
 The refinement scripts are ordered and idempotent: each requires the prior
 stage's selection metadata and writes `SUCCESS` only after exhaustive
 validation, generations, packed export, checksums, and artifact audit. The
-full runner resumes any existing per-mode checkpoint. Copy `artifacts/` back
-to the local repository before stopping or deleting a pod.
+summary command also verifies recorded checkpoint lineage and independently
+re-audits complete SHA-256 manifests before ranking exhaustive validation
+results. The full runner resumes any existing per-mode checkpoint. Copy
+`artifacts/` back to the local repository before stopping or deleting a pod.
 
 The helper scripts accept the pod host, SSH port, and private-key path:
 
