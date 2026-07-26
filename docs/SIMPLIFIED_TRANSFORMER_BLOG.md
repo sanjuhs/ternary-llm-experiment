@@ -350,10 +350,17 @@ experiments, so it has a clean control.
 The first attention repair is already measurable. Giving the four-entry
 attention codebook a smaller range made every code usable and reduced the
 matched validation loss from 2.2512 to **2.2269**. A longer follow-up first
-worsened to 2.2553, then recovered to 2.2401 by step 4,000. That is still not
-better than the short run. We therefore keep both checkpoints and retest them
-on the same pages before choosing which one supplies the next experiment. More
-training time does not automatically earn a win.
+worsened to 2.2553, recovered to 2.2401, and finished at 2.2490 on the shorter
+check. Reading the entire validation collection gave it **2.2354**, our best
+complete strict result so far. It also continued using all four attention
+symbols.
+
+We kept both checkpoints and retested them on the same pages before choosing
+the next experiment's source. The short run scored 2.2269 and the longer run's
+best checkpoint scored 2.2408, so the short run advances. The longer endpoint
+is still saved because it won the separate full-book measurement. This is why
+we distinguish a quick screening score from the final exhaustive score—and why
+more training time does not automatically earn a win.
 
 There is one more ordinary Transformer component to simplify. GELU is a curved
 activation function that normally needs a floating approximation. ReLU simply

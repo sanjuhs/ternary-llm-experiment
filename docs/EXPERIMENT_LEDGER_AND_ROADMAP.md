@@ -28,7 +28,11 @@ forced ternary Q/K/V is **2.289840**; adding the strict two-bit score and
 four-entry integer-LUT route gives **2.299876**. A model with one ternary code at
 every residual boundary now runs and generates, but is not competitive: the best
 strict result is **5.098914** (perplexity **163.8439**), versus 6.3798 before the
-progressive curriculum.
+progressive curriculum. The current best strict ternary-compute model instead
+uses three ternary residual refinement planes plus ternary weights/Q/K/V and a
+two-bit integer attention route; its exhaustive loss is **2.235370**
+(perplexity **9.34994**). Those three planes cost six physical code bits per
+residual scalar, so this is not an exact two-bit-storage result.
 
 ## What an INT32 accumulator really means
 
@@ -462,24 +466,29 @@ Clip 1.5 overcorrected: it made code 0 unreachable and remained much worse
 even after adapting. Clips 2.0 and 2.5 finished only 0.000836 loss apart, but
 2.0 was lower and uniquely retained selective zero routing while exercising
 all four probability codes. It also beat the mature clip-3 bounded control by
-0.024311 loss. The predeclared 5,000-step clip-2.0 refinement is now running
-from its saved 2,000-step checkpoint; only its exhaustive sequential result
-will become the stage endpoint.
+0.024311 loss.
 
-The longer run has now supplied two intermediate validations on that same
-200-batch slice:
+The predeclared longer run completed all 5,000 steps:
 
 | Refinement step | Loss | Perplexity | Zero routes | Code 2 | Entropy | Residual NMSE |
 |---:|---:|---:|---:|---:|---:|---:|
 | 2,000 | 2.255291 | 9.5381 | 85.91% | 4.33% | 2.0913 | 0.02122 |
 | 4,000 | **2.240107** | **9.3943** | 86.54% | 4.10% | 2.0538 | 0.02163 |
+| 5,000 | 2.249037 | 9.4786 | 86.76% | 4.02% | 2.0436 | 0.02190 |
 
-The recovery from step 2,000 is encouraging, but step 4,000 remains 0.013227
-worse than the original screen checkpoint's 2.226880. To prevent additional
-training from silently replacing a better model, the next stage re-evaluates
-the original screen checkpoint and the refinement's saved best checkpoint on
-identical batches and advances only the lower-loss source. The 5,000-step
-fixed-budget endpoint is still retained for the experimental record.
+Its exhaustive sequential endpoint is **2.235370 loss / 9.34994 perplexity**
+over 4,907,776 targets. This improves the previous best strict exhaustive
+result, the preserved clip-3 step-10,000 checkpoint at 2.240969, by 0.005600.
+On the full stream, all four route codes remain active at 85.69%, 8.26%, 4.36%,
+and 1.69%; attention entropy is 2.1434 and residual NMSE is 0.02280.
+
+The longer run still did not win the downstream-source gate. A fresh identical
+200-batch comparison measured the original screen checkpoint at **2.226880**
+and the refinement's saved best at **2.240827**. The shared-QKV-scale stage
+therefore starts from the screen checkpoint, while the fixed-budget endpoint
+remains preserved as the new exhaustive strict record. Its run and comparison
+metadata are independently checksum- and remote-integrity-verified on Hugging
+Face.
 
 The longer clip-3 control completed its predeclared training budget. Its
 matched validation trajectory through step 30,000 is:

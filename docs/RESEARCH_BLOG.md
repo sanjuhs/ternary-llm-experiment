@@ -1032,20 +1032,28 @@ mature clip-3 control at 2.251191 and the clip-2.5 arm by 0.000836. Its route
 distribution retains 84.95% zeros while assigning 4.74% to code 2, so all four
 probability codes are active. This is the first measured attention refinement
 that improves bounded loss without replacing one collapsed alphabet with
-another. The predeclared 5,000-step clip-2.0 refinement has started; the claim
-remains provisional until its exhaustive sequential validation, diagnostics,
-generations, export, and artifact audit finish.
+another.
 
-The longer refinement is not monotonically better. On the same 200-batch
-validation slice it measured **2.255291 loss / 9.5381 perplexity** at step
-2,000, then recovered to **2.240107 / 9.3943** at step 4,000. At step 4,000 its
-route codes remained active at 86.54%, 7.73%, 4.10%, and 1.64%; attention
-entropy was 2.0538 and residual normalized MSE was 2.16%. The result is still
-0.013227 loss worse than the original 2,000-step screen winner, so it is an
-intermediate trajectory point rather than a new best. Before the next
-architecture stage, the screen checkpoint and the refinement's saved best
-checkpoint will be re-evaluated on the same batches. The lower-loss source will
-advance, while the fixed-budget endpoint remains preserved and reported.
+The predeclared 5,000-step refinement is now complete. It was not monotonically
+better: its periodic 200-batch loss moved from **2.255291** at step 2,000 to
+**2.240107** at step 4,000, then regressed to **2.249037** at step 5,000.
+Exhaustive sequential evaluation of the fixed-budget endpoint nevertheless
+measured **2.235370 loss / 9.34994 perplexity** over 4,907,776 targets. That is
+0.005600 lower than the previous best strict exhaustive result of 2.240969.
+All four route codes remained active at 85.69%, 8.26%, 4.36%, and 1.69%;
+attention entropy was 2.1434 and residual normalized MSE was 2.28%.
+
+The handoff guard also did its job. A separate matched re-evaluation scored the
+original screen checkpoint at **2.226880** and the refinement's saved best at
+**2.240827**, so the screen checkpoint—not the longer run—supplies the next
+shared-scale experiment. The fixed 5,000-step endpoint remains a legitimate new
+exhaustive best and is preserved separately. Its generations are recognizably
+story-like but still contain pronoun swaps, repetition, malformed words, and
+unfinished endings; the loss improvement is not language-quality parity. The
+run, packed export, hashes, and audit are byte-verified on
+[Hugging Face](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/tinystories-28m/runs/attention-clip-selected-2.0-refine),
+and the full clip comparison is published
+[separately](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/tinystories-28m/comparisons/attention-clip-refinement).
 
 Together, these papers suggest two honest follow-ups. For exact two-bit storage,
 improve the two binary planes with block reconstruction, groupwise fixed-point
