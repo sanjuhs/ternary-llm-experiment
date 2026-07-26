@@ -5,6 +5,12 @@ cd /workspace/ternary-llm-experiment
 export UV_PROJECT_ENVIRONMENT=/opt/ternary-llm-venv
 export UV_LINK_MODE=copy
 
+exec 9>/tmp/ternary-relu-hardening.lock
+if ! flock -n 9; then
+  echo "ReLU hardening is already running" >&2
+  exit 75
+fi
+
 config="configs/tinystories_28m.toml"
 base="artifacts/tinystories-28m"
 clip_experiment="${base}/attention-clip-refinement"

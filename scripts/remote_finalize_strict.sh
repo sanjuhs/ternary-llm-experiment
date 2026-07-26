@@ -5,6 +5,12 @@ cd /workspace/ternary-llm-experiment
 export UV_PROJECT_ENVIRONMENT=/opt/ternary-llm-venv
 export UV_LINK_MODE=copy
 
+exec 9>/tmp/ternary-finalize-strict.lock
+if ! flock -n 9; then
+  echo "strict finalization is already running" >&2
+  exit 75
+fi
+
 run_dir="artifacts/tinystories-28m/hadamard-ternary-p3-half-pass"
 preserved_checkpoint="${run_dir}/checkpoint-step-10000.pt"
 preserved_run="artifacts/tinystories-28m/hadamard-ternary-p3-step-10000-preserved"
