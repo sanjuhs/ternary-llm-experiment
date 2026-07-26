@@ -799,6 +799,15 @@ shared-scale experiments, not an unmeasured change to the running control.
 The implementation reports the realized no-update mass and supplies an exact
 integer Route·V reference whose denominator includes the virtual route code.
 
+The live 27.4M strict control supports that ordering. At 2k, 4k, 6k, and 8k
+steps its matched validation loss improved from **2.41839** to **2.35827**,
+**2.30490**, and **2.26820** (perplexity **9.66195** at 8k). Over the same
+checkpoints the zero-route fraction rose from 79.62% to 85.77%, attention
+entropy fell from 2.3844 to 2.0259, and probability code 2 remained unused.
+The model is still learning, so we retain the 30k control. The diagnostic trend
+is the reason to run the already-declared clip sweep afterward—not permission
+to alter the control midstream.
+
 [Accurate 4-Bit Quantization with Hyperspherical
 Architecture](https://openreview.net/forum?id=tiqfxkYf1o) bounds attention and
 MLP error growth by normalizing activations and constraining weights so that

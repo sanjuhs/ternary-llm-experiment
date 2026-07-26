@@ -418,6 +418,21 @@ Clip 2 has a specific representational advantage: its ideal LUT ratios reach
 all four probability codes `[0, 1, 2, 3]`. The sweep still allows the data to
 reject that theoretical advantage if a different clip produces lower loss.
 
+The longer clip-3 control is still running. Its matched validation trajectory
+through step 8,000 is:
+
+| Step | Validation loss | Perplexity | Zero routes | Attention entropy | Residual NMSE |
+|---:|---:|---:|---:|---:|---:|
+| 2,000 | 2.418388 | 11.2278 | 79.62% | 2.3844 | 0.01670 |
+| 4,000 | 2.358272 | 10.5727 | 82.86% | 2.2176 | 0.01737 |
+| 6,000 | 2.304905 | 10.0232 | 84.68% | 2.1034 | 0.01806 |
+| 8,000 | **2.268195** | **9.6619** | **85.77%** | **2.0259** | **0.01899** |
+
+Loss is still improving, so the control must not be stopped early. The rising
+zero-route fraction, falling entropy, and permanently unused probability code
+2 are nevertheless concrete evidence for the predeclared clip sweep. They are
+not grounds to change the live control's settings.
+
 [PT2-LLM](https://openreview.net/forum?id=7QZanjCD6M) adds activation-aware
 ternary grid alignment and structural-similarity reordering for weights.
 [From Attention to Activation](https://openreview.net/forum?id=IjduZQK8gM)
