@@ -140,13 +140,17 @@ Its fixed clip-3 trajectory is still training to 30,000 steps:
 | 4,000 | 2.358272 | 10.5727 | 82.86% | 2.2176 |
 | 6,000 | 2.304905 | 10.0232 | 84.68% | 2.1034 |
 | 8,000 | 2.268195 | 9.6619 | 85.77% | 2.0259 |
-| 10,000 | **2.250819** | **9.4955** | **86.25%** | **1.9860** |
+| 10,000 | 2.250819 | 9.4955 | 86.25% | 1.9860 |
+| 12,000 | **2.250422** | **9.4917** | **87.24%** | **1.9178** |
 
 Probability code 2 remains unused at clip 3, so the predeclared downstream
 experiment screens clips 1.5, 2.0, 2.5, and 3.0. It is followed by equal-budget
 per-token versus learned-head QKV scale arms, equal-budget integer-Softmax
 versus Softmax-1 arms, and equal-budget GELU versus ReLU arms. These are
 prospective experiments; the table above must not be read as their result.
+The 10k-to-12k loss improvement was only 0.000397 while residual NMSE rose to
+0.02102, establishing a plateau without changing or prematurely stopping the
+predeclared 30k control.
 
 ## Deployment artifact contract
 

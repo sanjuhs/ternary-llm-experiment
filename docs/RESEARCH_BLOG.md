@@ -842,15 +842,17 @@ trains equal-budget GELU and ReLU arms from whichever integer-attention
 normalization wins exhaustive validation. This is a test, not an assumption:
 the ReLU endpoint is selected only if it preserves or improves matched loss.
 
-The live 27.4M strict control supports that ordering. At 2k, 4k, 6k, 8k, and
-10k steps its matched validation loss improved from **2.41839** to **2.35827**,
-**2.30490**, **2.26820**, and **2.25082** (perplexity **9.49551** at 10k).
-Over the same checkpoints the zero-route fraction rose from 79.62% to 86.25%,
-attention entropy fell from 2.3844 to 1.9860, and probability code 2 remained
-unused.
-The model is still learning, so we retain the 30k control. The diagnostic trend
-is the reason to run the already-declared clip sweep afterward—not permission
-to alter the control midstream.
+The live 27.4M strict control supports that ordering. At 2k, 4k, 6k, 8k, 10k,
+and 12k steps its matched validation loss moved from **2.41839** to
+**2.35827**, **2.30490**, **2.26820**, **2.25082**, and **2.25042**
+(perplexity **9.49174** at 12k). The final 2,000 steps improved loss by only
+0.00040. Over the full trajectory the zero-route fraction rose from 79.62% to
+87.24%, attention entropy fell from 2.3844 to 1.9178, residual NMSE rose from
+0.01670 to 0.02102, and probability code 2 remained unused.
+This is now a measured plateau rather than merely a slowing curve. We still
+retain the predeclared 30k control so its final result is unbiased. The
+diagnostic trend is the reason to run the already-declared clip sweep
+afterward—not permission to alter the control midstream.
 
 [Accurate 4-Bit Quantization with Hyperspherical
 Architecture](https://openreview.net/forum?id=tiqfxkYf1o) bounds attention and
