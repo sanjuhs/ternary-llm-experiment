@@ -55,7 +55,7 @@ stages=(
 for declaration in "${stages[@]}"; do
   IFS=: read -r current_stage script marker <<< "${declaration}"
   record_status
-  "${script}"
+  bash "${script}"
   if [[ ! -s "${base}/${marker}" ]]; then
     echo "${current_stage} returned without a SUCCESS marker" >&2
     false
