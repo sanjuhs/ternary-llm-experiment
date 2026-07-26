@@ -297,5 +297,5 @@ winner = min(full, key=full.get)
 )
 PY
 
-printf 'source_run=%s\nselected_normalization=%s\n' \
-  "${source_run}" "${selected_normalization}" > "${experiment}/SUCCESS"
+printf 'source_checkpoint=%s\nselected_normalization=%s\n' \
+  "${source_checkpoint}" "${selected_normalization}" > "${experiment}/SUCCESS"
