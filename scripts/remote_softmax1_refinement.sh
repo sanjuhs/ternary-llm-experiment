@@ -12,6 +12,11 @@ scale_experiment="${base}/shared-qkv-scale-refinement"
 teacher_checkpoint="${base}/float-two-pass/checkpoint.pt"
 experiment="${base}/softmax1-refinement"
 
+if [[ -s "${experiment}/SUCCESS" ]]; then
+  echo "Softmax1 refinement is already complete: ${experiment}/SUCCESS"
+  exit 0
+fi
+
 selected_clip="$(jq -r '.selected_clip' "${clip_experiment}/selection.json")"
 selected_initial="$(
   jq -r '.selected_initial_scale' "${scale_experiment}/selection.json"

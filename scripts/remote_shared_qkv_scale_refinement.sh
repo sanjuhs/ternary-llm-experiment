@@ -11,6 +11,11 @@ clip_experiment="${base}/attention-clip-refinement"
 teacher_checkpoint="${base}/float-two-pass/checkpoint.pt"
 experiment="${base}/shared-qkv-scale-refinement"
 
+if [[ -s "${experiment}/SUCCESS" ]]; then
+  echo "shared QKV scale refinement is already complete: ${experiment}/SUCCESS"
+  exit 0
+fi
+
 selected_clip="$(jq -r '.selected_clip' "${clip_experiment}/selection.json")"
 source_checkpoint="$(
   find "${base}" -maxdepth 2 -type f \

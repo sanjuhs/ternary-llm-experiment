@@ -12,6 +12,10 @@ teacher_checkpoint="${base}/float-two-pass/checkpoint.pt"
 experiment="${base}/attention-clip-refinement"
 
 mkdir -p "${experiment}"
+if [[ -s "${experiment}/SUCCESS" ]]; then
+  echo "attention clip refinement is already complete: ${experiment}/SUCCESS"
+  exit 0
+fi
 
 # The clip=3 integer LUT produces exp(-3), exp(-2), exp(-1), exp(0).
 # After row-wise 2-bit probability quantization these map to codes 0, 0, 1, 3,

@@ -7,6 +7,11 @@ export UV_LINK_MODE=copy
 
 run_dir="artifacts/tinystories-28m/hadamard-ternary-p3-half-pass"
 
+if [[ -s "${run_dir}/SUCCESS" ]]; then
+  echo "strict run is already finalized: ${run_dir}/SUCCESS"
+  exit 0
+fi
+
 for required in \
   checkpoint.pt \
   resolved-config.json \

@@ -13,6 +13,11 @@ normalization_experiment="${base}/softmax1-refinement"
 teacher_checkpoint="${base}/float-two-pass/checkpoint.pt"
 experiment="${base}/relu-hardening"
 
+if [[ -s "${experiment}/SUCCESS" ]]; then
+  echo "ReLU hardening is already complete: ${experiment}/SUCCESS"
+  exit 0
+fi
+
 selected_clip="$(jq -r '.selected_clip' "${clip_experiment}/selection.json")"
 selected_initial="$(
   jq -r '.selected_initial_scale' "${scale_experiment}/selection.json"
