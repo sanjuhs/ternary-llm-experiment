@@ -4,6 +4,7 @@ set -euo pipefail
 cd /workspace/ternary-llm-experiment
 export UV_PROJECT_ENVIRONMENT=/opt/ternary-llm-venv
 export UV_LINK_MODE=copy
+source scripts/remote_stage_helpers.sh
 
 exec 9>/tmp/ternary-softmax1-refinement.lock
 if ! flock -n 9; then
@@ -64,28 +65,30 @@ for normalization in softmax softmax1; do
     run_name="softmax1-no-update-refine"
   fi
 
-  uv run ternary-train \
-    --config "${config}" \
-    --mode hadamard_progressive \
-    --init-from "${source_checkpoint}" \
-    --teacher-checkpoint "${teacher_checkpoint}" \
-    --run-name "${run_name}" \
-    --activation-encoding residual_ternary \
-    --activation-planes 3 \
-    --qkv-quantization ternary \
-    --qkv-scale-granularity learned_head \
-    --qkv-scale-initial "${selected_initial}" \
-    --attention-quantization score_lut_prob_int2 \
-    --attention-normalization "${normalization}" \
-    --attention-clip "${selected_clip}" \
-    --max-steps 4000 \
-    --learning-rate 0.000012 \
-    --min-learning-rate 0.000003 \
-    --warmup-steps 100 \
-    --weight-decay 0 \
-    --logit-distillation-weight 0.1 \
-    --attention-distillation-weight 0.5 \
-    --hidden-distillation-weight 1.0
+  if prepare_training_run "${base}/${run_name}" 4000; then
+    uv run ternary-train \
+      --config "${config}" \
+      --mode hadamard_progressive \
+      --init-from "${source_checkpoint}" \
+      --teacher-checkpoint "${teacher_checkpoint}" \
+      --run-name "${run_name}" \
+      --activation-encoding residual_ternary \
+      --activation-planes 3 \
+      --qkv-quantization ternary \
+      --qkv-scale-granularity learned_head \
+      --qkv-scale-initial "${selected_initial}" \
+      --attention-quantization score_lut_prob_int2 \
+      --attention-normalization "${normalization}" \
+      --attention-clip "${selected_clip}" \
+      --max-steps 4000 \
+      --learning-rate 0.000012 \
+      --min-learning-rate 0.000003 \
+      --warmup-steps 100 \
+      --weight-decay 0 \
+      --logit-distillation-weight 0.1 \
+      --attention-distillation-weight 0.5 \
+      --hidden-distillation-weight 1.0
+  fi
 
   run_dir="${base}/${run_name}"
   uv run ternary-evaluate \

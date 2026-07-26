@@ -4,6 +4,7 @@ set -euo pipefail
 cd /workspace/ternary-llm-experiment
 export UV_PROJECT_ENVIRONMENT=/opt/ternary-llm-venv
 export UV_LINK_MODE=copy
+source scripts/remote_stage_helpers.sh
 
 exec 9>/tmp/ternary-attention-clip-refinement.lock
 if ! flock -n 9; then
@@ -51,25 +52,27 @@ done
 
 for clip in 1.5 2.0 2.5; do
   run_name="attention-clip-${clip}-screen"
-  uv run ternary-train \
-    --config "${config}" \
-    --mode hadamard_progressive \
-    --init-from "${source_checkpoint}" \
-    --teacher-checkpoint "${teacher_checkpoint}" \
-    --run-name "${run_name}" \
-    --activation-encoding residual_ternary \
-    --activation-planes 3 \
-    --qkv-quantization ternary \
-    --attention-quantization score_lut_prob_int2 \
-    --attention-clip "${clip}" \
-    --max-steps 2000 \
-    --learning-rate 0.00002 \
-    --min-learning-rate 0.000003 \
-    --warmup-steps 100 \
-    --weight-decay 0 \
-    --logit-distillation-weight 0.1 \
-    --attention-distillation-weight 0.5 \
-    --hidden-distillation-weight 1.0
+  if prepare_training_run "${base}/${run_name}" 2000; then
+    uv run ternary-train \
+      --config "${config}" \
+      --mode hadamard_progressive \
+      --init-from "${source_checkpoint}" \
+      --teacher-checkpoint "${teacher_checkpoint}" \
+      --run-name "${run_name}" \
+      --activation-encoding residual_ternary \
+      --activation-planes 3 \
+      --qkv-quantization ternary \
+      --attention-quantization score_lut_prob_int2 \
+      --attention-clip "${clip}" \
+      --max-steps 2000 \
+      --learning-rate 0.00002 \
+      --min-learning-rate 0.000003 \
+      --warmup-steps 100 \
+      --weight-decay 0 \
+      --logit-distillation-weight 0.1 \
+      --attention-distillation-weight 0.5 \
+      --hidden-distillation-weight 1.0
+  fi
 
   uv run ternary-evaluate \
     --config "${config}" \
@@ -118,25 +121,27 @@ else
 fi
 run_name="attention-clip-selected-${selection}-refine"
 
-uv run ternary-train \
-  --config "${config}" \
-  --mode hadamard_progressive \
-  --init-from "${selected_checkpoint}" \
-  --teacher-checkpoint "${teacher_checkpoint}" \
-  --run-name "${run_name}" \
-  --activation-encoding residual_ternary \
-  --activation-planes 3 \
-  --qkv-quantization ternary \
-  --attention-quantization score_lut_prob_int2 \
-  --attention-clip "${selection}" \
-  --max-steps 5000 \
-  --learning-rate 0.000015 \
-  --min-learning-rate 0.000003 \
-  --warmup-steps 100 \
-  --weight-decay 0 \
-  --logit-distillation-weight 0.1 \
-  --attention-distillation-weight 0.5 \
-  --hidden-distillation-weight 1.0
+if prepare_training_run "${base}/${run_name}" 5000; then
+  uv run ternary-train \
+    --config "${config}" \
+    --mode hadamard_progressive \
+    --init-from "${selected_checkpoint}" \
+    --teacher-checkpoint "${teacher_checkpoint}" \
+    --run-name "${run_name}" \
+    --activation-encoding residual_ternary \
+    --activation-planes 3 \
+    --qkv-quantization ternary \
+    --attention-quantization score_lut_prob_int2 \
+    --attention-clip "${selection}" \
+    --max-steps 5000 \
+    --learning-rate 0.000015 \
+    --min-learning-rate 0.000003 \
+    --warmup-steps 100 \
+    --weight-decay 0 \
+    --logit-distillation-weight 0.1 \
+    --attention-distillation-weight 0.5 \
+    --hidden-distillation-weight 1.0
+fi
 
 run_dir="${base}/${run_name}"
 uv run ternary-evaluate \
