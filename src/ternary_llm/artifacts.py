@@ -101,6 +101,83 @@ def _verify_declared_checkpoint_hash(run_dir: Path, checkpoint_hash: str) -> Non
         )
 
 
+def _validate_packed_export(run_dir: Path) -> dict[str, Any] | None:
+    model_path = run_dir / "model-2bit.pt"
+    metadata_path = run_dir / "packed-export.json"
+    if not model_path.exists() and not metadata_path.exists():
+        return None
+    if not model_path.is_file() or not metadata_path.is_file():
+        raise ArtifactValidationError(
+            "model-2bit.pt and packed-export.json must be present together"
+        )
+    if model_path.stat().st_size <= 0:
+        raise ArtifactValidationError("model-2bit.pt is empty")
+
+    payload = _load_json_object(metadata_path)
+    for name in ("source_bytes", "packed_bytes", "tensor_count"):
+        value = payload.get(name)
+        if (
+            not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or value <= 0
+            or not float(value).is_integer()
+        ):
+            raise ArtifactValidationError(
+                f"packed-export.json needs a positive integer-valued {name}"
+            )
+    if int(payload["packed_bytes"]) != model_path.stat().st_size:
+        raise ArtifactValidationError(
+            "packed-export.json packed_bytes does not match model-2bit.pt"
+        )
+
+    contract = payload.get("inference_contract")
+    if contract is None:
+        return {
+            "format": "legacy-ternary-2bit-v1",
+            "contract_present": False,
+            "tensor_count": int(payload["tensor_count"]),
+        }
+    if not isinstance(contract, dict):
+        raise ArtifactValidationError("inference_contract must be an object")
+    operand_contract = contract.get("ternary_operand_contract")
+    integer_reference = contract.get("end_to_end_integer_reference")
+    if not isinstance(operand_contract, dict) or not isinstance(
+        operand_contract.get("satisfied"),
+        bool,
+    ):
+        raise ArtifactValidationError(
+            "inference_contract needs a Boolean ternary_operand_contract.satisfied"
+        )
+    if not isinstance(integer_reference, dict) or not isinstance(
+        integer_reference.get("satisfied"),
+        bool,
+    ):
+        raise ArtifactValidationError(
+            "inference_contract needs a Boolean end_to_end_integer_reference.satisfied"
+        )
+    encoding_counts = payload.get("encoding_counts")
+    if (
+        not isinstance(encoding_counts, dict)
+        or not encoding_counts
+        or any(
+            not isinstance(count, int) or count <= 0
+            for count in encoding_counts.values()
+        )
+        or sum(encoding_counts.values()) != int(payload["tensor_count"])
+    ):
+        raise ArtifactValidationError(
+            "encoding_counts must be positive integers summing to tensor_count"
+        )
+    return {
+        "format": "ternary-deployment-v2",
+        "contract_present": True,
+        "tensor_count": int(payload["tensor_count"]),
+        "encoding_counts": encoding_counts,
+        "ternary_operand_contract_satisfied": operand_contract["satisfied"],
+        "end_to_end_integer_reference_satisfied": integer_reference["satisfied"],
+    }
+
+
 def build_run_manifest(
     run_dir: Path,
     *,
@@ -128,6 +205,7 @@ def build_run_manifest(
         run_dir,
         files["checkpoint.pt"]["sha256"],
     )
+    deployment = _validate_packed_export(run_dir)
 
     optional_files = ("SHA256SUMS", "model-2bit.pt", "packed-export.json")
     for name in optional_files:
@@ -135,7 +213,7 @@ def build_run_manifest(
         if path.is_file() and path.stat().st_size > 0:
             files[name] = {"bytes": path.stat().st_size, "sha256": _sha256(path)}
 
-    return {
+    manifest = {
         "run": run_dir.name,
         "validation": {
             "loss": full_validation["loss"],
@@ -145,6 +223,9 @@ def build_run_manifest(
         },
         "files": dict(sorted(files.items())),
     }
+    if deployment is not None:
+        manifest["deployment"] = deployment
+    return manifest
 
 
 def main() -> None:
