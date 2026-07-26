@@ -737,6 +737,24 @@ quality degradation for pure INT2 and keeps the rest of the Transformer in
 FP16. Its integer dataflow supports our kernel design, while its precision
 choices do not satisfy the all-ternary contract.
 
+[IntAttention](https://arxiv.org/abs/2511.21513) removes the remaining
+dequantize-softmax-requantize detour with a 32-entry exponential lookup table
+and direct integer normalization. It reports up to 3.7x attention speedup and
+61% energy reduction on Arm CPUs, but its operands are INT8 and the current
+paper says code will be released later. This is strong evidence for our
+integer-LUT denominator and requantization boundary, not evidence that ternary
+Q/K/V alone retain language-model quality.
+
+[ELiTeFormer](https://arxiv.org/abs/2607.03652) is the closest July 2026
+hardware proof: it combines hybrid linear attention, ternary linear
+projections, and an FPGA processing element that replaces ternary
+multiplication with bitmask operations. The authors report 10x weight and
+12.8x KV-cache compression, with 31.9% MMLU—within three percentage points of
+their BitNet b1.58 comparison. Its compressed cache and linear-attention state
+are not claimed to be ternary activations, however. It supports a future
+architecture branch and custom-ASIC feasibility; it cannot be counted as a
+matched all-ternary autoregressive result.
+
 [From Attention to Activation](https://arxiv.org/abs/2410.17174) offers a
 training-time route rather than a post-training codebook. Across its GPT-2
 models, Softmax-1 and OrthoAdam keep unquantized perplexity essentially

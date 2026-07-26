@@ -305,6 +305,8 @@ reading:
 | TWLA | Ternary weights; layers choose 2, 4, 6, or 8 activation bits under an average four-bit budget | Rotate values and give sensitive layers more room |
 | BWLA | Binary weights; usually six-bit activations; a small higher-precision correction | Shape values into a quantizer-friendly distribution |
 | TurboAttention | Q/K/V calculations at eight bits; KV memory mixes two- and four-bit heads | Integer attention, small lookup tables, and head sensitivity |
+| IntAttention | The attention pipeline stays integer, but uses eight-bit operands | Integer lookup-table softmax and integer normalization |
+| ELiTeFormer | Ternary linear projections with hybrid linear attention on an FPGA; the cache/state is compressed but not claimed ternary | A ternary hardware datapath and a possible alternative attention architecture |
 | FTerViT | Ternary weights and normalization parameters; eight-bit activations; vision rather than language | A possible ternary normalization design |
 
 None of these papers has already built our exact machine. That is why our

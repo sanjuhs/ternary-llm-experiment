@@ -449,6 +449,16 @@ The July 2026 literature audit also rejects three tempting but invalid shortcuts
 - BWLA's best stable joint result is W1A6 and its low-rank residual correction
   is not allowed by our inference contract.
 
+Two positive hardware references still inform the implementation:
+
+- [IntAttention](https://arxiv.org/abs/2511.21513) demonstrates an integer-only
+  softmax path with a 32-entry lookup table and direct integer normalization.
+  It validates the dataflow, but at INT8 rather than ternary operands.
+- [ELiTeFormer](https://arxiv.org/abs/2607.03652) demonstrates ternary linear
+  projections and hybrid linear attention on an FPGA. Its cache compression
+  and reported quality make it a future architecture branch, not a result for
+  the current causal-softmax model or uniform ternary activations.
+
 - [PackQViT](https://openreview.net/forum?id=N56hAiQvot) supports a fully
   four-bit vision path with integer-friendly nonlinear approximations. It
   strengthens the implementation case, but does not establish ternary language
