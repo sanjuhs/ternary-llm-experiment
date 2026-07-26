@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -12,6 +13,7 @@ from ternary_llm.publish_hf import (
     missing_remote_files,
     publish_run,
     remote_path,
+    verify_remote_integrity,
 )
 
 
@@ -47,6 +49,60 @@ def test_ipv4_context_does_not_patch_when_disabled() -> None:
     with ipv4_only_dns(False):
         assert socket.getaddrinfo is original
     assert socket.getaddrinfo is original
+
+
+def test_remote_integrity_verifies_git_and_lfs_objects(tmp_path: Path) -> None:
+    git_file = tmp_path / "small.txt"
+    lfs_file = tmp_path / "large.bin"
+    git_file.write_text("small remote object\n")
+    lfs_file.write_bytes(b"large remote object")
+    git_blob = hashlib.sha1(
+        f"blob {git_file.stat().st_size}\0".encode() + git_file.read_bytes()
+    ).hexdigest()
+    lfs_sha = hashlib.sha256(lfs_file.read_bytes()).hexdigest()
+    remote_infos = [
+        SimpleNamespace(
+            path="runs/demo/small.txt",
+            size=git_file.stat().st_size,
+            blob_id=git_blob,
+            lfs=None,
+        ),
+        SimpleNamespace(
+            path="runs/demo/large.bin",
+            size=lfs_file.stat().st_size,
+            blob_id="pointer",
+            lfs=SimpleNamespace(sha256=lfs_sha),
+        ),
+    ]
+
+    counts = verify_remote_integrity(
+        tmp_path,
+        ("large.bin", "small.txt"),
+        remote_infos,
+        path_in_repo="runs/demo",
+    )
+
+    assert counts == {"git_blob_sha1": 1, "lfs_sha256": 1}
+
+
+def test_remote_integrity_rejects_digest_mismatch(tmp_path: Path) -> None:
+    (tmp_path / "small.txt").write_text("local\n")
+    remote_infos = [
+        SimpleNamespace(
+            path="small.txt",
+            size=(tmp_path / "small.txt").stat().st_size,
+            blob_id="wrong",
+            lfs=None,
+        )
+    ]
+
+    with pytest.raises(RuntimeError, match="does not match"):
+        verify_remote_integrity(
+            tmp_path,
+            ("small.txt",),
+            remote_infos,
+            path_in_repo="",
+        )
 
 
 def test_publish_run_rejects_incomplete_checksums_before_upload(

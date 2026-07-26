@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import socket
 from collections.abc import Iterator
@@ -46,6 +47,62 @@ def missing_remote_files(
         for relative_path in local_files
         if remote_path(path_in_repo, relative_path) not in remote_set
     )
+
+
+def _sha256(path: Path) -> str:
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def _git_blob_sha1(path: Path) -> str:
+    digest = hashlib.sha1()
+    digest.update(f"blob {path.stat().st_size}\0".encode())
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def verify_remote_integrity(
+    folder: Path,
+    local_files: tuple[str, ...],
+    remote_infos: list[Any],
+    *,
+    path_in_repo: str,
+) -> dict[str, int]:
+    """Verify every uploaded byte through its Git blob or LFS object digest."""
+    folder = folder.resolve()
+    info_by_path = {
+        str(getattr(info, "path", "")): info
+        for info in remote_infos
+        if getattr(info, "path", None)
+    }
+    counts = {"git_blob_sha1": 0, "lfs_sha256": 0}
+    for relative_path in local_files:
+        remote_name = remote_path(path_in_repo, relative_path)
+        info = info_by_path.get(remote_name)
+        if info is None:
+            raise RuntimeError(f"remote integrity metadata is missing: {remote_name}")
+        local_path = folder / relative_path
+        remote_size = getattr(info, "size", None)
+        if remote_size != local_path.stat().st_size:
+            raise RuntimeError(f"remote size does not match local file: {remote_name}")
+
+        lfs = getattr(info, "lfs", None)
+        if lfs is not None:
+            expected = _sha256(local_path)
+            actual = getattr(lfs, "sha256", None)
+            method = "lfs_sha256"
+        else:
+            expected = _git_blob_sha1(local_path)
+            actual = getattr(info, "blob_id", None)
+            method = "git_blob_sha1"
+        if actual != expected:
+            raise RuntimeError(
+                f"remote {method} does not match local file: {remote_name}"
+            )
+        counts[method] += 1
+    return counts
 
 
 @contextmanager
@@ -116,6 +173,24 @@ def publish_run(
         missing_text = ", ".join(missing)
         raise RuntimeError(f"upload completed but remote files are missing: {missing_text}")
 
+    expected_remote_paths = [
+        remote_path(path_in_repo, relative_path)
+        for relative_path in expected_files
+    ]
+    with ipv4_only_dns(ipv4_only):
+        remote_infos = hub_api.get_paths_info(
+            repo_id=repo_id,
+            paths=expected_remote_paths,
+            repo_type=repo_type,
+            revision=revision,
+        )
+    remote_integrity = verify_remote_integrity(
+        run_dir,
+        expected_files,
+        remote_infos,
+        path_in_repo=path_in_repo,
+    )
+
     return {
         "repo_id": repo_id,
         "repo_type": repo_type,
@@ -124,6 +199,7 @@ def publish_run(
         "commit_url": str(commit),
         "verified_file_count": len(expected_files),
         "verified_files": list(expected_files),
+        "remote_integrity": remote_integrity,
         "artifact_manifest": manifest,
     }
 
