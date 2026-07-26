@@ -25,6 +25,27 @@ the newer ternary-QKV and integer-LUT outputs are in
 The strict residual-curriculum outputs are preserved in
 [docs/FULLY_TERNARY_GENERATION_SAMPLES.md](docs/FULLY_TERNARY_GENERATION_SAMPLES.md).
 
+## Current headline results
+
+All in-project values below use the same 27.4M-parameter architecture,
+tokenizer, TinyStories validation stream, and 4,907,776 evaluated targets:
+
+| Inference representation | Validation loss | Perplexity |
+|---|---:|---:|
+| Float control | **1.344198** | **3.8351** |
+| Ternary weights, ordinary activations | **1.535463** | **4.6435** |
+| Ternary weights, four-bit residual activations | **1.800118** | **6.0504** |
+| Ternary weights/Q/K/V, two-bit integer attention, three ternary residual planes | **2.235370** | **9.3499** |
+
+The final row is the best exhaustive strict result so far, but it is not
+float-quality parity and is not an exact two-bit-storage model: three ternary
+residual planes occupy six physical code bits per scalar. The active refinement
+chain preserves two endpoints. A regression-safe quality branch may reject
+stricter components; a separate hardware branch must pass the exported ternary
+operand contract with factorizable per-head scales, ReLU, and integer RMSNorm.
+Neither branch claims a fused ASIC runtime until the remaining scalar
+requantization and sampling boundaries are implemented.
+
 ## What is implemented
 
 - reproducible `uv` environment;
