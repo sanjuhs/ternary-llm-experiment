@@ -493,6 +493,60 @@ def ternary_qk_attention_reference(
     return scores, accumulators
 
 
+def binary_qk_attention_reference(
+    query: Tensor,
+    key: Tensor,
+    *,
+    query_scale: Tensor | None = None,
+    key_scale: Tensor | None = None,
+    eps: float = 1e-5,
+) -> tuple[Tensor, Tensor]:
+    """Compute binary Q·K scores with exact INT32 accumulation.
+
+    Optional scales allow the learned per-head deployment path to move both
+    positive scale factors outside the binary dot product. Without explicit
+    scales, the function uses magnitude-optimal per-vector references.
+    """
+    if query.ndim < 2 or key.ndim < 2:
+        raise ValueError("query and key must have at least two dimensions")
+    if query.shape[:-2] != key.shape[:-2] or query.shape[-1] != key.shape[-1]:
+        raise ValueError(
+            "query and key must share prefix dimensions and head width"
+        )
+    query_codes, dynamic_query_scale = binary_activation_codes(
+        query,
+        eps=eps,
+    )
+    key_codes, dynamic_key_scale = binary_activation_codes(
+        key,
+        eps=eps,
+    )
+    resolved_query_scale = (
+        dynamic_query_scale
+        if query_scale is None
+        else query_scale.detach().clamp_min(eps)
+    )
+    resolved_key_scale = (
+        dynamic_key_scale
+        if key_scale is None
+        else key_scale.detach().clamp_min(eps)
+    )
+    try:
+        torch.broadcast_shapes(query.shape, resolved_query_scale.shape)
+        torch.broadcast_shapes(key.shape, resolved_key_scale.shape)
+    except RuntimeError as error:
+        raise ValueError("Q/K scales must be broadcastable to their operands") from error
+    accumulators = (
+        query_codes.to(torch.int32)
+        @ key_codes.transpose(-2, -1).to(torch.int32)
+    )
+    scores = accumulators.to(query.dtype)
+    scores = scores * resolved_query_scale.to(query.dtype)
+    scores = scores * resolved_key_scale.transpose(-2, -1).to(query.dtype)
+    scores = scores / query.shape[-1] ** 0.5
+    return scores, accumulators
+
+
 def int2_route_ternary_value_reference(
     probability_codes: Tensor,
     values: Tensor,

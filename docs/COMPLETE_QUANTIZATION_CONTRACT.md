@@ -18,10 +18,12 @@ implementable definition.
 | Model output between blocks | binary/ternary code planes | quantized residual boundary |
 
 The repository includes exact arithmetic references for both linear projections
-and attention Q·K. The Q·K reference converts Q and K into exact ternary code
-tensors, performs the large dot product with INT32 accumulation, and applies
-the two small per-vector scales afterward. Tests compare this path against the
-reconstructed fake-quantized tensors element for element.
+and attention Q·K. Separate Q·K references convert Q and K into exact ternary
+or binary code tensors, perform the large dot product with INT32 accumulation,
+and apply the two small scale factors afterward. The binary reference covers
+both magnitude-optimal per-vector scales and factorized learned per-head
+scales. Tests compare these paths against the reconstructed fake-quantized
+tensors element for element.
 
 Route·V is not yet equally clean in the current quality path. V is ternary-coded
 but has a separate scale per token; because attention mixes many token

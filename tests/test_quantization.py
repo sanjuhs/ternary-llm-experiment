@@ -4,6 +4,7 @@ import torch
 from ternary_llm.quantization import (
     binarize_activation_with_learned_scale,
     binary_activation_codes,
+    binary_qk_attention_reference,
     int2_route_ternary_value_reference,
     integer_rms_norm_reference,
     integer_softmax_from_int2_codes,
@@ -298,6 +299,55 @@ def test_ternary_qk_reference_matches_reconstructed_attention_scores() -> None:
     assert accumulators.shape == (2, 3, 4, 5)
     assert accumulators.abs().max().item() <= 8
     assert torch.allclose(scores, expected, atol=1e-6, rtol=1e-6)
+
+
+@pytest.mark.parametrize("shared_scales", [False, True])
+def test_binary_qk_reference_matches_reconstructed_attention_scores(
+    shared_scales: bool,
+) -> None:
+    torch.manual_seed(29)
+    query = torch.randn(2, 3, 4, 8)
+    key = torch.randn(2, 3, 5, 8)
+    query_codes, dynamic_query_scale = binary_activation_codes(query)
+    key_codes, dynamic_key_scale = binary_activation_codes(key)
+    if shared_scales:
+        query_scale = torch.rand(1, 3, 1, 1).clamp_min(0.1)
+        key_scale = torch.rand(1, 3, 1, 1).clamp_min(0.1)
+    else:
+        query_scale = None
+        key_scale = None
+    expected_query_scale = (
+        dynamic_query_scale if query_scale is None else query_scale
+    )
+    expected_key_scale = dynamic_key_scale if key_scale is None else key_scale
+    expected = (
+        (query_codes * expected_query_scale)
+        @ (key_codes * expected_key_scale).transpose(-2, -1)
+    ) / 8**0.5
+
+    scores, accumulators = binary_qk_attention_reference(
+        query,
+        key,
+        query_scale=query_scale,
+        key_scale=key_scale,
+    )
+
+    assert accumulators.dtype == torch.int32
+    assert accumulators.shape == (2, 3, 4, 5)
+    assert accumulators.abs().max().item() <= 8
+    assert torch.allclose(scores, expected, atol=1e-6, rtol=1e-6)
+
+
+def test_binary_qk_reference_rejects_nonbroadcastable_scales() -> None:
+    query = torch.randn(2, 3, 4, 8)
+    key = torch.randn(2, 3, 5, 8)
+
+    with pytest.raises(ValueError, match="broadcastable"):
+        binary_qk_attention_reference(
+            query,
+            key,
+            query_scale=torch.ones(7),
+        )
 
 
 def test_learned_scale_ternarization_updates_shadow_and_scale() -> None:
