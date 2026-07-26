@@ -449,8 +449,8 @@ Clip 2 has a specific representational advantage: its ideal LUT ratios reach
 all four probability codes `[0, 1, 2, 3]`. The sweep still allows the data to
 reject that theoretical advantage if a different clip produces lower loss.
 
-The longer clip-3 control is still running. Its matched validation trajectory
-through step 28,000 is:
+The longer clip-3 control completed its predeclared training budget. Its
+matched validation trajectory through step 30,000 is:
 
 | Step | Validation loss | Perplexity | Zero routes | Attention entropy | Residual NMSE |
 |---:|---:|---:|---:|---:|---:|
@@ -468,6 +468,7 @@ through step 28,000 is:
 | 24,000 | 2.306608 | 10.0403 | 88.27% | 1.8314 | **0.02332** |
 | 26,000 | 2.316209 | 10.1372 | **88.36%** | **1.8254** | 0.02327 |
 | 28,000 | 2.306657 | 10.0408 | **88.42%** | **1.8170** | **0.02358** |
+| 30,000 | 2.317175 | 10.1470 | **88.62%** | **1.8061** | 0.02355 |
 
 The last 2,000 steps recovered only 0.000397 loss while route sparsity and
 residual error continued to rise; the following three 2,000-step intervals then
@@ -479,13 +480,14 @@ ending 0.065787 above the 12k minimum and erasing the prior interval's partial
 recovery. Step 28k recovered 0.009552 loss, but remained 0.056235 above the
 minimum. Route sparsity and residual NMSE reached new highs while attention
 entropy fell again, so the loss recovery does not reverse the attention
-collapse signal. The current geometry has reached a measured plateau followed
-by sustained degradation with two temporary recoveries.
-The control still must not be stopped early: completing its predeclared budget
-prevents an adaptive stopping decision from biasing the comparison. The rising
-zero-route fraction, falling entropy, and permanently unused probability code
-2 are concrete evidence for the predeclared clip sweep, not grounds to change
-the live control's settings.
+collapse signal. Step 30k then worsened by 0.010518 loss and finished 0.066753
+above the 12k minimum. Route sparsity reached 88.62%, entropy fell to 1.8061,
+and probability code 2 remained unused. The geometry reached a measured
+plateau followed by sustained degradation with two temporary recoveries.
+Completing the predeclared budget prevents an adaptive stopping decision from
+biasing the comparison. The rising zero-route fraction, falling entropy, and
+permanently unused probability code 2 are concrete evidence for the
+predeclared clip sweep; they were not used to alter the control mid-run.
 
 The running process was launched before best-checkpoint retention existed, so
 its periodic `checkpoint.pt` would have overwritten the step-10,000 state at
