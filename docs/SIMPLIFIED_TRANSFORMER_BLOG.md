@@ -494,3 +494,10 @@ were worse. The stable-scale model is still saved for the separate strict
 hardware endpoint. This is the practical meaning of our two-answer rule:
 “best storyteller” and “cleanest ternary machine” do not have to be the same
 checkpoint while the research is unfinished.
+
+We also tested the special “send no message” attention card. The model really
+used it—about 1.5% of attention mass went to that card—but its full loss was
+**2.2417**, compared with **2.2309** for ordinary tiny-integer attention. So
+the card is mathematically valid and trainable, yet it does not improve this
+model. We keep ordinary attention for the quality path and preserve the
+no-message version as evidence for future architectures.

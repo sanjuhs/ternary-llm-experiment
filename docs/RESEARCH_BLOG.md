@@ -1263,3 +1263,25 @@ repetition and semantic errors. These samples are useful diagnostics, not a
 replacement for held-out loss. Both audited runs, packed exports, generations,
 and the comparison metadata are preserved in the public Hugging Face model
 repository.
+
+## An explicit no-update route is valid, but does not win
+
+The next matched experiment replaced ordinary integer-LUT Softmax with
+Softmax-1: each query receives a virtual route that contributes to the integer
+denominator but adds no value vector. This gives attention a legitimate “send
+nothing” choice without a floating bypass.
+
+Before adaptation, Softmax-1 scored 2.268965 versus 2.226880 for ordinary
+Softmax. After 4,000 equal-budget QAT steps, the matched losses were 2.252379
+and 2.241261. Exhaustive validation confirmed the ordering:
+
+| Normalization | Exhaustive loss | Perplexity | No-update mass |
+|---|---:|---:|---:|
+| Ordinary integer Softmax | **2.230903** | **9.3083** | approximately 0% |
+| Integer Softmax-1 | 2.241651 | 9.4089 | **1.54%** |
+
+Softmax-1 learned to use the new route and recovered most of its initial gap,
+but remained 0.010748 loss worse. This rejects the hypothesis for the current
+quality branch without invalidating the integer mechanism. Ordinary Softmax is
+selected; the Softmax-1 run, generations, packed export, and comparison are
+checksum-verified and published on Hugging Face.

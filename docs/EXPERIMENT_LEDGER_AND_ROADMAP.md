@@ -509,6 +509,19 @@ extra training nor a mismatched exhaustive traversal was allowed to cause a
 regression. Both runs and the comparison folder are checksum-verified and
 published on Hugging Face.
 
+The matched Softmax-1 stage is also complete:
+
+| Attention normalization | Pre-QAT loss | 200-batch loss after 4k | Exhaustive loss | Perplexity |
+|---|---:|---:|---:|---:|
+| Ordinary integer Softmax | **2.226880** | **2.241261** | **2.230903** | **9.3083** |
+| Integer Softmax-1 | 2.268965 | 2.252379 | 2.241651 | 9.4089 |
+
+Softmax-1 retained a real 1.54% no-update mass on the exhaustive stream and
+closed most of its initial deficit, but remained 0.010748 loss worse. The
+comparison therefore selects ordinary Softmax. Both run directories and the
+comparison metadata passed local checksums, artifact audits, and remote
+Hugging Face integrity verification.
+
 Every later quality-stage handoff now compares its untouched input with the
 retained best checkpoint from both matched arms, preventing two regressions
 from displacing a better model. Because that rule may reject hardware-friendly
