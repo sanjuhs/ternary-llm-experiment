@@ -361,9 +361,11 @@ That ablation is implemented as `qkv_scale_granularity = "learned_head"`.
 It learns one positive scale for each Q/K/V head, uses exact ternary forward
 codes, and passes STE gradients to both the shadow activation and scale. After
 the attention-clip refinement, a matched stage will screen initial scales 0.25,
-0.5, 0.75, and 1.0 on the same 200 batches, adapt only the winner for 4,000
-steps, and run exhaustive validation. This isolates the quality price of making
-the scale factorizable outside both attention matmuls.
+0.5, 0.75, and 1.0 on the same 200 batches. It will then adapt the winning
+learned-head scale and an unchanged per-token-scale control for 4,000 steps
+each, followed by exhaustive validation of both. This isolates the quality
+price of making the scale factorizable outside both attention matmuls from the
+benefit of receiving more optimizer steps.
 
 A one-step integration smoke loaded the real 27.4M ternary-weight checkpoint
 through this new path, trained, validated, saved, reloaded, and generated text
@@ -453,8 +455,10 @@ a theoretical outlier advantage is not enough.
 The option is implemented as `attention_normalization = "softmax1"`, including
 the virtual route in both integer-LUT and probability-code normalization. The
 diagnostics report its realized no-update mass, and the exact Route·V reference
-accepts the virtual two-bit code in its INT32 denominator. A queued 4,000-step
-refinement runs only after the shared-scale checkpoint exists.
+accepts the virtual two-bit code in its INT32 denominator. After the shared-
+scale checkpoint exists, standard Softmax and Softmax-1 will start from that
+same checkpoint, receive 4,000 steps each, and undergo exhaustive validation.
+The reported delta therefore has a matched optimizer-budget control.
 
 The July 2026 literature audit also rejects three tempting but invalid shortcuts:
 

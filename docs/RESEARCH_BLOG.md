@@ -798,6 +798,12 @@ accumulation. It is now a predeclared architecture arm after the clip and
 shared-scale experiments, not an unmeasured change to the running control.
 The implementation reports the realized no-update mass and supplies an exact
 integer Route·V reference whose denominator includes the virtual route code.
+The queued test now trains both the unchanged integer-Softmax path and
+Softmax-1 for 4,000 steps from the same checkpoint. A pre-adaptation comparison
+and exhaustive post-adaptation comparison prevent extra training time from
+being mistaken for an architectural improvement. The shared-head-scale stage
+uses the same rule: its learned-scale arm and per-token-scale control receive
+equal optimizer budgets.
 
 The live 27.4M strict control supports that ordering. At 2k, 4k, 6k, and 8k
 steps its matched validation loss improved from **2.41839** to **2.35827**,

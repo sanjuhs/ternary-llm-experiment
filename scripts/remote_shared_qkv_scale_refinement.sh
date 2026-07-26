@@ -24,6 +24,13 @@ fi
 
 mkdir -p "${experiment}"
 
+uv run ternary-evaluate \
+  --config "${config}" \
+  --checkpoint "${source_checkpoint}" \
+  --device cuda \
+  --batches 200 \
+  > "${experiment}/pre-adaptation-token.json"
+
 # A fixed learned scale per head makes the scale product factorizable outside
 # both Q·K and Route·V. Screen the initialization before spending adaptation
 # tokens because an initial scale that is too large can collapse every code to
@@ -66,13 +73,38 @@ print(winner)
 PY
 )"
 
-run_name="shared-head-qkv-scale-${selected_initial}-refine"
+# Match the learned-head arm with an unchanged per-token-scale control. This
+# prevents four thousand extra optimizer steps from masquerading as a benefit
+# of shared, factorizable scales.
+control_run_name="qkv-scale-token-control"
 uv run ternary-train \
   --config "${config}" \
   --mode hadamard_progressive \
   --init-from "${source_checkpoint}" \
   --teacher-checkpoint "${teacher_checkpoint}" \
-  --run-name "${run_name}" \
+  --run-name "${control_run_name}" \
+  --activation-encoding residual_ternary \
+  --activation-planes 3 \
+  --qkv-quantization ternary \
+  --qkv-scale-granularity token \
+  --attention-quantization score_lut_prob_int2 \
+  --attention-clip "${selected_clip}" \
+  --max-steps 4000 \
+  --learning-rate 0.000012 \
+  --min-learning-rate 0.000003 \
+  --warmup-steps 100 \
+  --weight-decay 0 \
+  --logit-distillation-weight 0.1 \
+  --attention-distillation-weight 0.5 \
+  --hidden-distillation-weight 1.0
+
+learned_run_name="shared-head-qkv-scale-${selected_initial}-refine"
+uv run ternary-train \
+  --config "${config}" \
+  --mode hadamard_progressive \
+  --init-from "${source_checkpoint}" \
+  --teacher-checkpoint "${teacher_checkpoint}" \
+  --run-name "${learned_run_name}" \
   --activation-encoding residual_ternary \
   --activation-planes 3 \
   --qkv-quantization ternary \
@@ -89,35 +121,106 @@ uv run ternary-train \
   --attention-distillation-weight 0.5 \
   --hidden-distillation-weight 1.0
 
-run_dir="${base}/${run_name}"
-uv run ternary-evaluate \
-  --config "${config}" \
-  --checkpoint "${run_dir}/checkpoint.pt" \
-  --device cuda \
-  --sequential \
-  > "${run_dir}/full-validation.json"
+for arm in token learned_head; do
+  if [[ "${arm}" == "token" ]]; then
+    run_name="${control_run_name}"
+  else
+    run_name="${learned_run_name}"
+  fi
+  run_dir="${base}/${run_name}"
 
-uv run ternary-diagnostics \
-  --checkpoint "${run_dir}/checkpoint.pt" \
-  --config "${config}" \
-  --device cuda \
-  > "${run_dir}/diagnostics.json"
-
-: > "${run_dir}/generations.txt"
-for prompt in \
-  "Once upon a time" \
-  "Lily found a tiny red door" \
-  "Tom wanted to help his friend"
-do
-  uv run ternary-generate \
+  uv run ternary-evaluate \
+    --config "${config}" \
     --checkpoint "${run_dir}/checkpoint.pt" \
-    --tokenizer data/full/tokenizer.json \
-    --prompt "${prompt}" \
-    --max-new-tokens 120 \
-    --temperature 0.8 \
-    --top-k 50 \
     --device cuda \
-    >> "${run_dir}/generations.txt"
+    --batches 200 \
+    > "${experiment}/post-adaptation-${arm}.json"
+
+  uv run ternary-evaluate \
+    --config "${config}" \
+    --checkpoint "${run_dir}/checkpoint.pt" \
+    --device cuda \
+    --sequential \
+    > "${run_dir}/full-validation.json"
+
+  uv run ternary-diagnostics \
+    --checkpoint "${run_dir}/checkpoint.pt" \
+    --config "${config}" \
+    --device cuda \
+    > "${run_dir}/diagnostics.json"
+
+  : > "${run_dir}/generations.txt"
+  for prompt in \
+    "Once upon a time" \
+    "Lily found a tiny red door" \
+    "Tom wanted to help his friend"
+  do
+    uv run ternary-generate \
+      --checkpoint "${run_dir}/checkpoint.pt" \
+      --tokenizer data/full/tokenizer.json \
+      --prompt "${prompt}" \
+      --max-new-tokens 120 \
+      --temperature 0.8 \
+      --top-k 50 \
+      --device cuda \
+      >> "${run_dir}/generations.txt"
+  done
+
+  sha256sum "${run_dir}/checkpoint.pt" > "${run_dir}/SHA256SUMS"
 done
 
-sha256sum "${run_dir}/checkpoint.pt" > "${run_dir}/SHA256SUMS"
+uv run python - "${experiment}" "${selected_initial}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+initial = sys.argv[2]
+pre = {
+    "token": json.loads((root / "pre-adaptation-token.json").read_text())["loss"],
+    **{
+        path.stem.removeprefix("pre-adaptation-initial-"): json.loads(
+            path.read_text()
+        )["loss"]
+        for path in sorted(root.glob("pre-adaptation-initial-*.json"))
+    },
+}
+post = {
+    arm: json.loads((root / f"post-adaptation-{arm}.json").read_text())["loss"]
+    for arm in ("token", "learned_head")
+}
+full = {
+    "token": json.loads(
+        (root.parent / "qkv-scale-token-control" / "full-validation.json").read_text()
+    )["loss"],
+    "learned_head": json.loads(
+        (
+            root.parent
+            / f"shared-head-qkv-scale-{initial}-refine"
+            / "full-validation.json"
+        ).read_text()
+    )["loss"],
+}
+(root / "comparison.json").write_text(
+    json.dumps(
+        {
+            "initial_selection_metric": "matched 200-batch validation loss",
+            "final_comparison_metric": (
+                "matched exhaustive sequential validation loss"
+            ),
+            "selected_initial_scale": initial,
+            "pre_adaptation_losses": pre,
+            "post_adaptation_losses": post,
+            "learned_head_delta_vs_matched_token": (
+                post["learned_head"] - post["token"]
+            ),
+            "full_validation_losses": full,
+            "full_validation_learned_head_delta_vs_matched_token": (
+                full["learned_head"] - full["token"]
+            ),
+        },
+        indent=2,
+    )
+    + "\n"
+)
+PY
