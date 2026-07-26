@@ -16,8 +16,9 @@ This repository stores checkpoints, compact packed exports, projection
 calibrations, metrics, and samples for
 [`sanjuhs/ternary-llm-experiment`](https://github.com/sanjuhs/ternary-llm-experiment).
 
-The main completed models are 5.84M-parameter GPT-style TinyStories models trained
-for one nominal pass over 488M sampled tokens:
+The repository includes both the original 5.84M-parameter pilots and the
+matched 27.4M-parameter TinyStories experiment. The original models trained for
+one nominal pass over 488M sampled tokens:
 
 | Mode | Validation loss | Perplexity |
 |---|---:|---:|
@@ -109,3 +110,50 @@ improves the best ternary-plane model. These checkpoints, exhaustive
 evaluations, diagnostics, generations, metrics, and resolved configurations are
 in `residual-refinement-pilot/`. Multi-plane ternary models preserve ternary
 matrix operands but are not 1.58-bit-per-activation models.
+
+## Live 27.4M strict ternary control
+
+The current strict control combines:
+
+- packed ternary weights and ternary Q/K/V;
+- fixed-Hadamard projection;
+- three residual ternary planes;
+- four-code shifted attention scores;
+- a four-entry integer exponential lookup table;
+- two-bit normalized attention routes;
+- wider integer accumulators followed by requantization.
+
+Its fixed clip-3 trajectory is still training to 30,000 steps:
+
+| Step | Validation loss | Perplexity | Zero routes | Attention entropy |
+|---:|---:|---:|---:|---:|
+| 2,000 | 2.418388 | 11.2278 | 79.62% | 2.3844 |
+| 4,000 | 2.358272 | 10.5727 | 82.86% | 2.2176 |
+| 6,000 | 2.304905 | 10.0232 | 84.68% | 2.1034 |
+| 8,000 | 2.268195 | 9.6619 | 85.77% | 2.0259 |
+| 10,000 | **2.250819** | **9.4955** | **86.25%** | **1.9860** |
+
+Probability code 2 remains unused at clip 3, so the predeclared downstream
+experiment screens clips 1.5, 2.0, 2.5, and 3.0. It is followed by equal-budget
+per-token versus learned-head QKV scale arms, equal-budget integer-Softmax
+versus Softmax-1 arms, and equal-budget GELU versus ReLU arms. These are
+prospective experiments; the table above must not be read as their result.
+
+## Deployment artifact contract
+
+New completed runs use `ternary-deployment-v2`:
+
+- matrix, embedding, normalization, and fixed-Hadamard tensors are packed as
+  two-bit ternary codes plus scales;
+- learned positive Q/K/V head scales are stored as INT16 fixed-point values;
+- non-floating buffers are preserved losslessly;
+- every export embeds a machine-readable inference-contract checklist;
+- the publisher audits the run, uploads it, enumerates the committed Hub files,
+  and fails if any expected file is missing.
+
+The repository contains exact INT32 references for residual-plane/ternary
+linear products, ternary Q·K, two-plane Route·V, integer-LUT attention
+normalization, and fixed-point RMSNorm arithmetic. The RMSNorm reference is not
+yet wired through the full PyTorch model, and final token sampling remains a
+separate boundary. Therefore, a packed export proves its declared low-bit
+operands; it does not by itself prove a fused end-to-end ternary ASIC runtime.
