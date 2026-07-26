@@ -795,6 +795,10 @@ Softmax-1, and ReLU gates complete, a matched experiment will train an
 unchanged ternary-QKV control and the binary-Q/K arm for 4,000 steps each from
 the same selected checkpoint. Both receive the same Q/K-similarity
 distillation weight, and selection uses exhaustive sequential validation.
+A two-step integration smoke has already exercised the complete checkpoint,
+teacher-distillation, backward, validation, diagnostic, and serialization
+path. It confirmed exact binary Q/K alphabets and ternary V; its random-data
+loss is not a quality measurement.
 
 [ELiTeFormer](https://arxiv.org/abs/2607.03652) is the closest July 2026
 hardware proof: it combines hybrid linear attention, ternary linear

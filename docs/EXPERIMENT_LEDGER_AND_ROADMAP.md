@@ -423,6 +423,13 @@ the selected endpoint seeds a 4,000-step ternary-QKV control and a 4,000-step
 binary-Q/K arm. Both use the same Q/K-similarity distillation objective; only
 the Q/K alphabet differs.
 
+A two-step end-to-end integration smoke has also passed through initialization
+from a checkpoint, teacher capture, logit/attention/QK/hidden distillation,
+backpropagation, validation diagnostics, best-checkpoint selection, and final
+checkpoint serialization. It observed exactly zero zero-codes in Q and K and a
+ternary V alphabet. Its tiny random-data loss is deliberately not treated as a
+quality result.
+
 The live 27.4M strict run revealed that clip 3 leaves probability code 2 unused:
 the integer LUT ratios map to probability codes `[0, 0, 1, 3]`, and the first
 diagnostic measured 79.62% zero routes. A follow-up clip-utilization refinement
