@@ -9,6 +9,7 @@ from ternary_llm.completion_audit import (
     CompletionAuditError,
     build_completion_audit,
 )
+from ternary_llm.overnight_summary import OvernightSummaryError
 from ternary_llm.publish_hf import DEFAULT_REPO_ID, local_relative_files
 
 
@@ -111,4 +112,18 @@ def test_completion_audit_rejects_missing_receipt(tmp_path: Path) -> None:
             root,
             receipts,
             summary_builder=_summary,
+        )
+
+
+def test_completion_audit_wraps_incomplete_experiment_summary(
+    tmp_path: Path,
+) -> None:
+    def incomplete(_root: Path) -> dict[str, Any]:
+        raise OvernightSummaryError("strict stage has no SUCCESS marker")
+
+    with pytest.raises(CompletionAuditError, match="summary is incomplete"):
+        build_completion_audit(
+            tmp_path,
+            tmp_path / "receipts",
+            summary_builder=incomplete,
         )

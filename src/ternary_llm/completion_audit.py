@@ -6,7 +6,11 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from ternary_llm.overnight_summary import build_overnight_summary
+from ternary_llm.artifacts import ArtifactValidationError
+from ternary_llm.overnight_summary import (
+    OvernightSummaryError,
+    build_overnight_summary,
+)
 from ternary_llm.publish_hf import DEFAULT_REPO_ID, local_relative_files
 
 METADATA_FOLDERS = (
@@ -95,7 +99,12 @@ def build_completion_audit(
     """Prove local completion and bind it to verified Hub publication receipts."""
     artifacts_root = artifacts_root.resolve()
     receipts_dir = receipts_dir.resolve()
-    summary = summary_builder(artifacts_root)
+    try:
+        summary = summary_builder(artifacts_root)
+    except (OvernightSummaryError, ArtifactValidationError) as error:
+        raise CompletionAuditError(
+            f"experiment summary is incomplete: {error}"
+        ) from error
 
     run_publications = []
     for manifest in summary["audited_runs"]:
