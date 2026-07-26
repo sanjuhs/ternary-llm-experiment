@@ -472,3 +472,10 @@ ternary V, and finally replace floating RMS normalization with its exact
 integer reference. Each candidate receives the same training and validation
 budget as its control. A readable sample alone cannot win; the full validation
 loss and the ternary/integer arithmetic audit must also pass.
+
+We will finish with two named answers. The **quality winner** is allowed to
+reject a stricter replacement when the loss gets worse. The **strict hardware
+endpoint** must use stable per-head scales, ternary Q/K/V, simple ReLU,
+low-bit integer attention, and integer RMS normalization even if its stories
+score lower. The export checker must confirm the ternary-operand contract
+before that second model can be called complete.

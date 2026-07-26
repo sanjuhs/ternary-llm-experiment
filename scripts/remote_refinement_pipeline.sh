@@ -50,6 +50,7 @@ stages=(
   "relu-hardening:scripts/remote_relu_hardening.sh:relu-hardening/SUCCESS"
   "binary-qk:scripts/remote_binary_qk_fallback.sh:binary-qk-fallback/SUCCESS"
   "integer-rmsnorm:scripts/remote_integer_rmsnorm_screen.sh:integer-rmsnorm-screen/SUCCESS"
+  "strict-contract:scripts/remote_strict_contract_endpoint.sh:strict-contract-refinement/SUCCESS"
 )
 
 for declaration in "${stages[@]}"; do

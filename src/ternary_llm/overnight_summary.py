@@ -56,6 +56,9 @@ def _run_names(artifacts_root: Path) -> tuple[list[str], dict[str, Any]]:
     rms_norm = _json_object(
         artifacts_root / "integer-rmsnorm-screen" / "comparison.json"
     )
+    strict_contract = _json_object(
+        artifacts_root / "strict-contract-refinement" / "comparison.json"
+    )
 
     selected_clip = str(clip.get("selected_clip", ""))
     selected_scale = str(scale.get("selected_initial_scale", ""))
@@ -75,6 +78,7 @@ def _run_names(artifacts_root: Path) -> tuple[list[str], dict[str, Any]]:
             "ffn-relu-harden-refine",
             "binary-qk-ternary-control-refine",
             "binary-qk-sign-distill-refine",
+            "strict-contract-relu-rmsnorm",
         ],
         {
             "attention_clip": clip,
@@ -83,6 +87,7 @@ def _run_names(artifacts_root: Path) -> tuple[list[str], dict[str, Any]]:
             "feed_forward_activation": relu,
             "qkv_quantization": binary,
             "rms_norm_quantization": rms_norm,
+            "strict_operand_contract": strict_contract,
         },
     )
 
@@ -103,6 +108,7 @@ def build_overnight_summary(
         "relu-hardening",
         "binary-qk-fallback",
         "integer-rmsnorm-screen",
+        "strict-contract-refinement",
     ]
     success = {stage: _require_success(artifacts_root / stage) for stage in stages}
     lineage_stages = stages[2:]

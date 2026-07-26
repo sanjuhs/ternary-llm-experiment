@@ -490,6 +490,16 @@ remains preserved as the new exhaustive strict record. Its run and comparison
 metadata are independently checksum- and remote-integrity-verified on Hugging
 Face.
 
+Every later quality-stage handoff now compares its untouched input with the
+retained best checkpoint from both matched arms, preventing two regressions
+from displacing a better model. Because that rule may reject hardware-friendly
+shared scales, ReLU, or integer RMSNorm, the overnight chain also contains a
+separate mandatory strict-contract endpoint. It combines learned per-head QKV
+scales, ternary Q/K/V, the two-bit integer attention route, ReLU, and
+integer-reference RMSNorm. Publication is allowed only if the exported
+ternary-operand contract passes; its loss is reported separately from the
+quality winner.
+
 The longer clip-3 control completed its predeclared training budget. Its
 matched validation trajectory through step 30,000 is:
 

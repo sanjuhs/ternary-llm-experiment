@@ -8,6 +8,7 @@ TRAINING_RUNNERS = (
     "remote_softmax1_refinement.sh",
     "remote_relu_hardening.sh",
     "remote_binary_qk_fallback.sh",
+    "remote_strict_contract_endpoint.sh",
 )
 ALL_STAGES = (
     "remote_finalize_strict.sh",
@@ -54,6 +55,7 @@ def test_downstream_stages_require_predecessor_success() -> None:
         "remote_relu_hardening.sh": '${normalization_experiment}/SUCCESS',
         "remote_binary_qk_fallback.sh": '${activation_experiment}/SUCCESS',
         "remote_integer_rmsnorm_screen.sh": '${binary_experiment}/SUCCESS',
+        "remote_strict_contract_endpoint.sh": '${scale_experiment}/SUCCESS',
     }
     for name, marker in expected_gate.items():
         source = _read(name)
@@ -87,6 +89,7 @@ def test_refinement_pipeline_waits_then_runs_declared_order() -> None:
         "scripts/remote_relu_hardening.sh",
         "scripts/remote_binary_qk_fallback.sh",
         "scripts/remote_integer_rmsnorm_screen.sh",
+        "scripts/remote_strict_contract_endpoint.sh",
         "/opt/ternary-llm-venv/bin/ternary-overnight-summary",
     ]
     offsets = [source.index(command) for command in ordered]
@@ -126,3 +129,16 @@ def test_selected_qkv_scale_contract_propagates_past_scale_stage() -> None:
         assert "selected_qkv_scale_granularity" in source, name
         assert "selected_qkv_scale_initial" in source, name
         assert 'qkv_scale_args=(--qkv-scale-granularity' in source, name
+
+
+def test_strict_endpoint_enforces_operand_contract() -> None:
+    source = _read("remote_strict_contract_endpoint.sh")
+    assert "--qkv-scale-granularity learned_head" in source
+    assert "--qkv-quantization ternary" in source
+    assert "--feed-forward-activation relu" in source
+    assert "--rms-norm-quantization integer_reference" in source
+    assert 'if not operand["satisfied"]' in source
+    assert (
+        "bash scripts/remote_strict_contract_endpoint.sh"
+        in _read("remote_integer_rmsnorm_screen.sh")
+    )

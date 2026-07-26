@@ -19,6 +19,7 @@ STAGES = (
     "relu-hardening",
     "binary-qk-fallback",
     "integer-rmsnorm-screen",
+    "strict-contract-refinement",
 )
 
 
@@ -64,6 +65,10 @@ def _complete_chain(root: Path) -> None:
         root / "integer-rmsnorm-screen" / "comparison.json",
         {"selected_rms_norm_quantization": "integer_reference"},
     )
+    _write_json(
+        root / "strict-contract-refinement" / "comparison.json",
+        {"ternary_operand_contract_satisfied": True},
+    )
 
 
 def test_build_overnight_summary_requires_complete_chain(tmp_path: Path) -> None:
@@ -84,14 +89,14 @@ def test_build_overnight_summary_requires_complete_chain(tmp_path: Path) -> None
 
     summary = build_overnight_summary(tmp_path, manifest_builder=manifest)
 
-    assert len(seen) == 11
+    assert len(seen) == 12
     assert all(complete for _, complete in seen)
     assert summary["status"] == "complete"
-    assert summary["best_run"]["run"] == "binary-qk-sign-distill-refine"
+    assert summary["best_run"]["run"] == "strict-contract-relu-rmsnorm"
     assert "attention_clip" in summary["decisions"]
     markdown = render_overnight_markdown(summary)
     assert "# Overnight ternary experiment summary" in markdown
-    assert "| 1 | binary-qk-sign-distill-refine |" in markdown
+    assert "| 1 | strict-contract-relu-rmsnorm |" in markdown
 
 
 def test_build_overnight_summary_fails_without_success_marker(

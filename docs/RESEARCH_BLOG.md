@@ -1065,6 +1065,16 @@ run, packed export, hashes, and audit are byte-verified on
 and the full clip comparison is published
 [separately](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/tinystories-28m/comparisons/attention-clip-refinement).
 
+The remaining pipeline now preserves two different endpoints instead of
+quietly conflating them. The quality branch may retain token-wise QKV scales,
+GELU, or floating RMSNorm when a stricter replacement loses too much. A
+separate mandatory strict-contract branch starts from the learned per-head
+scale checkpoint and combines ternary Q/K/V, the two-bit integer route, ReLU,
+and exact integer-reference RMSNorm. Its exporter must report
+`ternary_operand_contract.satisfied = true` or the stage fails. This still does
+not claim a fused end-to-end integer runtime: requantization-scale arithmetic
+and final token sampling remain explicit outstanding boundaries.
+
 Together, these papers suggest two honest follow-ups. For exact two-bit storage,
 improve the two binary planes with block reconstruction, groupwise fixed-point
 scales, and layer sensitivity training. For quality with ternary operators,

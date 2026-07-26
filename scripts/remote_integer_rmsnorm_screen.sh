@@ -267,3 +267,8 @@ PY
 
 printf 'selected_qkv_quantization=%s\nsource_checkpoint=%s\n' \
   "${selected_qkv}" "${source_checkpoint}" > "${experiment}/SUCCESS"
+
+# The currently running overnight orchestrator predates the separately declared
+# strict-contract stage. Run it here as a compatibility bridge; newer
+# orchestrators call the same idempotent script as the following stage.
+bash scripts/remote_strict_contract_endpoint.sh
