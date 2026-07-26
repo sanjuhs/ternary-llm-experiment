@@ -190,5 +190,11 @@ The small-model survivor audit has now completed. Its best exhaustive result is
 the ReLU-hardened three-ternary-plane model at loss **2.518279** and perplexity
 **12.4072**. The exact two-bit binary-plane model plateaus at loss **4.251708**.
 Those results validate the discrete training machinery, but neither answers the
-capacity gate. The 27.4M float control is running over the full 488M-token
-corpus before its matched ternary conversions.
+capacity gate. The completed 27.4M float control reaches **1.344198** loss, and
+its ternary-weight/A16 conversion reaches **1.535463**. The strict
+ternary-QKV, integer-LUT-attention, three-plane-residual checkpoint reaches
+**2.303869** after 30k steps on exhaustive sequential validation. Preserving
+the exact 10k checkpoint improves that strict result to **2.240969**, but it
+still misses the first quality gate. The next matched clip, shared-scale,
+Softmax-1, ReLU, binary-QK, and integer-RMSNorm experiments target the measured
+attention-collapse and arithmetic-boundary failures one at a time.

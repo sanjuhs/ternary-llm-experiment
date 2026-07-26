@@ -935,6 +935,17 @@ control keeps its endpoint unbiased. The diagnostic trend is the reason to run
 the already-declared clip sweep afterward; it was not used to alter the
 control midstream.
 
+The full sequential audit covers 4,907,776 validation targets. It scores the
+30k endpoint at **2.303869 loss** and **10.01285 perplexity**, while the exact
+preserved 10k checkpoint reaches **2.240969 loss** and **9.40244 perplexity**.
+That 0.062900 advantage confirms the bounded-validation trend. On the same full
+stream, 30k versus 10k has 87.93% versus 85.23% zero routes, entropy 1.8873
+versus 2.0798, and residual NMSE 0.02430 versus 0.02068. Both checkpoints have
+now produced fixed generations, packed 2-bit-weight exports, complete
+checksums, and successful artifact audits. The samples are recognizably
+TinyStories-like but still contain repetitions and local contradictions, so
+readability does not override the loss gap.
+
 [TQL](https://openreview.net/forum?id=lwHSE1xYHH), published at ICML 2026,
 independently identifies attention-entropy collapse as a cause of unstable
 Transformer training and reports that explicitly controlling attention entropy
@@ -953,11 +964,11 @@ resumable checkpoint every 5,000 steps. Before the next overwrite, we therefore
 preserved the exact step-10,000 checkpoint—the best checkpoint actually written
 before the 12k metric minimum—as `checkpoint-step-10000.pt`, with SHA-256
 `d543268160bf9e5405a1b89747665fc1dca54686535cc0129bd8863e5d17a160`.
-The finalizer will evaluate, diagnose, generate from, export, and audit that
-checkpoint as a separate preserved run. The clip experiment will start from
-the best available saved checkpoint while still reporting the full 30k control.
-All newly launched training arms now retain `best-checkpoint.pt`
-automatically, and every subsequent stage records which checkpoint it used.
+The finalizer evaluated, diagnosed, generated from, exported, and audited that
+checkpoint as a separate preserved run. The clip experiment starts from it
+while still reporting the full 30k control. All newly launched training arms
+retain `best-checkpoint.pt` automatically, and every subsequent stage records
+which checkpoint it used.
 
 [Accurate 4-Bit Quantization with Hyperspherical
 Architecture](https://openreview.net/forum?id=tiqfxkYf1o) bounds attention and

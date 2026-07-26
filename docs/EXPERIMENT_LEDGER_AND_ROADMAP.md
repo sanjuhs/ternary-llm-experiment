@@ -489,16 +489,26 @@ biasing the comparison. The rising zero-route fraction, falling entropy, and
 permanently unused probability code 2 are concrete evidence for the
 predeclared clip sweep; they were not used to alter the control mid-run.
 
+The separate exhaustive sequential audit changes the absolute score slightly
+but confirms the conclusion. Over 4,907,776 validation targets, the final 30k
+checkpoint scores **2.303869 loss** and **10.01285 perplexity**. The preserved
+10k checkpoint scores **2.240969 loss** and **9.40244 perplexity**, a 0.062900
+improvement with no extra checkpoint selection. On the same full stream,
+zero-route use is 87.93% versus 85.23%, attention entropy is 1.8873 versus
+2.0798, and residual NMSE is 0.02430 versus 0.02068 for 30k versus 10k. This
+confirms that prolonging the unchanged strict geometry degraded both quality
+and its internal attention/residual diagnostics.
+
 The running process was launched before best-checkpoint retention existed, so
 its periodic `checkpoint.pt` would have overwritten the step-10,000 state at
 15,000. We preserved that exact 337,312,923-byte checkpoint as
 `checkpoint-step-10000.pt`; both files matched SHA-256
 `d543268160bf9e5405a1b89747665fc1dca54686535cc0129bd8863e5d17a160`
-before the overwrite. Finalization will turn it into a separately exhaustive,
-generated, exported, checksummed, and audited run. Downstream arms now save
-`best-checkpoint.pt` at every improved validation and select the best available
-saved checkpoint between stages, while final checkpoints remain the matched
-fixed-budget comparison.
+before the overwrite. Both the 30k and preserved 10k checkpoints are now
+separately exhaustive, generated, packed, checksummed, and artifact-audited.
+Downstream arms save `best-checkpoint.pt` at every improved validation and
+select the best available saved checkpoint between stages, while final
+checkpoints remain the matched fixed-budget comparison.
 
 [PT2-LLM](https://openreview.net/forum?id=7QZanjCD6M) adds activation-aware
 ternary grid alignment and structural-similarity reordering for weights.

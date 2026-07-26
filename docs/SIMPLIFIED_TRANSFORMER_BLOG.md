@@ -431,5 +431,28 @@ The first message-compression test is now finished. Keeping ternary weights but
 using four-bit messages produces **1.8001 loss**, compared with **1.5355** when
 those messages remain ordinary floating-point values. So four bits are usable,
 but they are not free: the model loses a noticeable amount of story-prediction
-quality. The final running model goes further by making Q, K, and V ternary and
-using ternary cards between every block.
+quality.
+
+The stricter 27.4-million-parameter model has now finished too. It makes Q, K,
+and V ternary, routes attention with four tiny integer choices, and carries
+each between-block message on three ternary cards. Its best saved checkpoint
+scores **2.2410 loss**; continuing the same setup to 30,000 steps makes it
+worse, at **2.3039**. The normal model remains at **1.3442**, and ternary
+weights with ordinary messages remain at **1.5355**. So the honest answer is:
+we have a working ternary-style inference graph that writes recognizable
+stories, but it does not yet preserve the normal model's quality.
+
+The failure is informative. As training continued, about 88% of possible
+attention routes became zero and the variety of attention choices kept
+shrinking. Think of eight people in a meeting where most message channels have
+gone silent. Training longer cannot fix a language model if its communication
+system is collapsing.
+
+The next experiments therefore change that communication system one piece at
+a time. We will try a smaller attention range so all four route cards are
+actually used, give Q/K/V one stable scale per head, add a legitimate
+“send no message” choice, compare GELU with simple ReLU, try binary Q/K with
+ternary V, and finally replace floating RMS normalization with its exact
+integer reference. Each candidate receives the same training and validation
+budget as its control. A readable sample alone cannot win; the full validation
+loss and the ternary/integer arithmetic audit must also pass.
