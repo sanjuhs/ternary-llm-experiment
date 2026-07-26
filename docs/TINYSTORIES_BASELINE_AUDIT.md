@@ -35,16 +35,18 @@ sampling 100 random batches.
 | Model | Vocabulary | Parameters | Training budget | Loss | Perplexity | Bits / UTF-8 byte |
 |---|---:|---:|---:|---:|---:|---:|
 | Released TinyStories-33M | 50,257 | about 68.5M learned tensors including embeddings | Released checkpoint | **1.54010** | **4.6650** | **0.55354** |
-| Our float baseline | 4,096 | 5,836,032 | 488,177,664 sampled tokens, about one corpus pass | **1.68961** | **5.4174** | **0.62249** |
+| Our earlier float baseline | 4,096 | 5,836,032 | 488,177,664 sampled tokens, about one corpus-equivalent budget | **1.68961** | **5.4174** | **0.62249** |
+| Our matched float control | 4,096 | 27,402,752 | 976,355,328 sampled tokens, two corpus-equivalent budgets | **1.34420** | **3.8351** | **0.49523** |
 
 Raw token loss and perplexity are not comparable across different tokenizers.
 Bits per UTF-8 byte is the fairer common-text metric. On that measure, our
-existing float model is about **12.5% behind** the released checkpoint.
+earlier float model is about **12.5% behind** the released checkpoint, while
+the new matched-capacity control is about **10.5% better**.
 
 For our 4,096-token tokenizer, **1.50247 loss** corresponds to the released
 model's 0.55354 bits-per-byte rate. That is the capacity-control target for the
-new 27.4M-parameter run. It is a derived parity threshold, not a reported paper
-number.
+27.4M-parameter run. The exhaustive result of 1.34420 passes it by 0.15827.
+The threshold is a derived parity target, not a reported paper number.
 
 The evaluator is reproducible:
 
@@ -64,20 +66,25 @@ uv run ternary-evaluate \
   --sequential
 ```
 
-## Why the existing baseline does not match
+## The capacity question is resolved
 
-The current baseline is a 5.84M-parameter model trained for one nominal pass.
+The earlier baseline is a 5.84M-parameter model trained for one nominal pass.
 The public models behind the 1.32 and 1.272 headlines use larger bodies, much
 larger embedding tables, more epochs, a different tokenizer, or a cleaned
 dataset. A quantized student cannot be expected to reach their score until its
 own floating-point capacity control reaches the matched target.
 
-The new control has 27,402,752 learned parameters, width 512, eight layers,
-eight heads, context 256, and the same 4,096-token tokenizer as our experiment.
-It is scheduled for a training-token budget equal to two corpus passes. Batches
-are sampled as random contiguous windows, so this is not a deterministic
-sequential epoch. That isolates model capacity and token budget before
-introducing ternary weights.
+The completed control has 27,402,752 learned parameters, width 512, eight
+layers, eight heads, context 256, and the same 4,096-token tokenizer as our
+experiment. It trained for a token budget equal to two corpus passes. Batches
+were sampled as random contiguous windows, so this was not a deterministic
+sequential epoch.
+
+Its exhaustive loss is **1.344198** over 4,907,776 validation targets. The
+approximately **0.495229 bits per UTF-8 byte** result beats the released
+TinyStories-33M common-text reference. Model capacity and float training are
+therefore no longer the limiting explanation for the ternary gap. The matched
+ternary-weight conversion now starts from this checkpoint.
 
 ## The inference rule
 

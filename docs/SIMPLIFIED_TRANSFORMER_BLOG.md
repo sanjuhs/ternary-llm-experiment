@@ -346,5 +346,12 @@ symbols available in the notebook matters more. The strict two-bit version has
 now plateaued, so merely training it longer is unlikely to solve the quality
 gap. The promising route is to redesign the network for its ternary cards,
 spend extra cards only where measurements justify them, and keep every cost
-honest. A 27.4-million-parameter normal model is now training on the full
-dataset so the next comparison has a fair teacher and a fair target.
+honest.
+
+The new 27.4-million-parameter normal model has now finished. Its full
+validation loss is **1.3442**, and its common-text score is about **0.495 bits
+per byte**. The released TinyStories-33M model scores about **0.554 bits per
+byte**, where lower is better. In plain language: our normal-sized teacher is
+good enough. If its ternary children fall behind, we can no longer blame an
+undertrained teacher. The ternary-weight child is now training from that
+stronger starting point.

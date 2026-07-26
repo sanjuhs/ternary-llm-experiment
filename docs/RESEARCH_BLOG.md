@@ -797,9 +797,22 @@ that a ternary-operand Transformer should be co-designed around its discrete
 forward path rather than obtained by mechanically rounding a conventional
 GELU Transformer.
 
-The next running control is a 27.4M-parameter float model trained for a token
-budget equal to two passes over the 488M-token corpus. Training windows are
-sampled randomly, so “two-pass” is a budget label rather than a deterministic
-sequential epoch. That control is essential: quantization cannot be blamed for
-a target the float teacher itself never reached. It will be followed by matched
-ternary-weight and strict activation stages.
+## The matched float model clears the reference
+
+The 27.4M-parameter float control completed a token budget equal to two passes
+over the 488M-token corpus. Training windows were sampled randomly, so
+“two-pass” is a budget label rather than a deterministic sequential epoch.
+
+The exhaustive result is **1.344198 loss** and **3.8351 perplexity** over
+4,907,776 validation targets. On the same raw validation text this corresponds
+to approximately **0.495229 bits per UTF-8 byte**, compared with **0.553544**
+for the released TinyStories-33M checkpoint. The new control is about 10.5%
+better on that tokenizer-neutral metric.
+
+This changes the interpretation of the project. The old 5.84M teacher was a
+capacity confound; the new one is not. Any remaining ternary loss gap can now be
+attributed to conversion, discrete optimization, or architecture with much
+greater confidence. The automatically queued stages start with one
+corpus-equivalent ternary-weight QAT budget, followed by packed export, A4
+activation adaptation, and the strict ternary-QKV/low-bit-attention/ternary-
+residual stage.

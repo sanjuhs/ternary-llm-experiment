@@ -66,10 +66,17 @@ tokenizers differ, bits per UTF-8 byte is the meaningful common metric:
 |---|---:|---:|---:|
 | Released TinyStories-33M | 1.54010 | 4.6650 | **0.55354** |
 | Our 5.84M float baseline | 1.68961 | 5.4174 | **0.62249** |
+| Our 27.4M matched float control | **1.34420** | **3.8351** | **0.49523** |
 
 The exact JSON records are in `baseline-audit/`. The full methodology and
 comparability caveats are in the GitHub
 [`TINYSTORIES_BASELINE_AUDIT.md`](https://github.com/sanjuhs/ternary-llm-experiment/blob/agent/gated-ternary-attention/docs/TINYSTORIES_BASELINE_AUDIT.md).
+
+The 27.4M control trained for 976,355,328 randomly sampled tokens, a
+two-corpus-equivalent token budget. It beats the released 33M checkpoint by
+about 10.5% on the tokenizer-neutral bits-per-byte metric. Its checkpoint,
+exhaustive evaluation, diagnostics, generations, and metrics are in
+`tinystories-28m/float-two-pass/`.
 
 ## Residual-plane refinement
 
