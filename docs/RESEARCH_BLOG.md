@@ -843,14 +843,16 @@ normalization wins exhaustive validation. This is a test, not an assumption:
 the ReLU endpoint is selected only if it preserves or improves matched loss.
 
 The live 27.4M strict control supports that ordering. At 2k, 4k, 6k, 8k, 10k,
-12k, 14k, and 16k steps its matched validation loss moved from **2.41839** to
+12k, 14k, 16k, and 18k steps its matched validation loss moved from
+**2.41839** to
 **2.35827**, **2.30490**, **2.26820**, **2.25082**, and **2.25042**
 before regressing to **2.25656** at 14k and **2.28049** (perplexity **9.78147**)
-at 16k. The 10k-to-12k interval improved loss by only 0.00040, then the next
-two intervals lost 0.00613 and 0.02393. Over the full trajectory the zero-route
-fraction rose from 79.62% to 87.75%, attention entropy fell from 2.3844 to
-1.8672, residual NMSE rose from 0.01670 to 0.02219, and probability code 2
-remained unused.
+at 16k, followed by **2.29273** (perplexity **9.90189**) at 18k. The
+10k-to-12k interval improved loss by only 0.00040, then the next three
+intervals lost 0.00613, 0.02393, and 0.01224. Over the full trajectory the
+zero-route fraction rose from 79.62% to 87.96%, attention entropy fell from
+2.3844 to 1.8620, residual NMSE rose from 0.01670 to 0.02274, and probability
+code 2 remained unused.
 This is now a measured plateau followed by regression rather than merely a
 slowing curve. We still retain the predeclared 30k control so its final result
 is unbiased. The diagnostic trend is the reason to run the already-declared
