@@ -13,6 +13,7 @@ ALL_STAGES = (
     "remote_finalize_strict.sh",
     *TRAINING_RUNNERS,
     "remote_integer_rmsnorm_screen.sh",
+    "remote_refinement_pipeline.sh",
 )
 
 
@@ -73,3 +74,22 @@ def test_strict_finalizer_requires_both_completed_artifacts() -> None:
         '[[ -s "${run_dir}/SUCCESS" && -s "${preserved_run}/SUCCESS" ]]'
         in source
     )
+
+
+def test_refinement_pipeline_waits_then_runs_declared_order() -> None:
+    source = _read("remote_refinement_pipeline.sh")
+    assert "while pgrep -f '^bash scripts/remote_28m_baseline" in source
+    ordered = [
+        "scripts/remote_finalize_strict.sh",
+        "scripts/remote_attention_clip_refinement.sh",
+        "scripts/remote_shared_qkv_scale_refinement.sh",
+        "scripts/remote_softmax1_refinement.sh",
+        "scripts/remote_relu_hardening.sh",
+        "scripts/remote_binary_qk_fallback.sh",
+        "scripts/remote_integer_rmsnorm_screen.sh",
+        "/opt/ternary-llm-venv/bin/ternary-overnight-summary",
+    ]
+    offsets = [source.index(command) for command in ordered]
+    assert offsets == sorted(offsets)
+    assert "REFINEMENT_PIPELINE_FAILED" in source
+    assert "REFINEMENT_PIPELINE_SUCCESS" in source
