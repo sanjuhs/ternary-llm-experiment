@@ -53,6 +53,9 @@ def _run_names(artifacts_root: Path) -> tuple[list[str], dict[str, Any]]:
     softmax = _json_object(artifacts_root / "softmax1-refinement" / "comparison.json")
     relu = _json_object(artifacts_root / "relu-hardening" / "comparison.json")
     binary = _json_object(artifacts_root / "binary-qk-fallback" / "comparison.json")
+    rms_norm = _json_object(
+        artifacts_root / "integer-rmsnorm-screen" / "comparison.json"
+    )
 
     selected_clip = str(clip.get("selected_clip", ""))
     selected_scale = str(scale.get("selected_initial_scale", ""))
@@ -79,6 +82,7 @@ def _run_names(artifacts_root: Path) -> tuple[list[str], dict[str, Any]]:
             "attention_normalization": softmax,
             "feed_forward_activation": relu,
             "qkv_quantization": binary,
+            "rms_norm_quantization": rms_norm,
         },
     )
 
@@ -98,6 +102,7 @@ def build_overnight_summary(
         "softmax1-refinement",
         "relu-hardening",
         "binary-qk-fallback",
+        "integer-rmsnorm-screen",
     ]
     success = {stage: _require_success(artifacts_root / stage) for stage in stages}
     lineage_stages = stages[2:]

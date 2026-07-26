@@ -9,7 +9,11 @@ TRAINING_RUNNERS = (
     "remote_relu_hardening.sh",
     "remote_binary_qk_fallback.sh",
 )
-ALL_STAGES = ("remote_finalize_strict.sh", *TRAINING_RUNNERS)
+ALL_STAGES = (
+    "remote_finalize_strict.sh",
+    *TRAINING_RUNNERS,
+    "remote_integer_rmsnorm_screen.sh",
+)
 
 
 def _read(name: str) -> str:
@@ -48,6 +52,7 @@ def test_downstream_stages_require_predecessor_success() -> None:
         "remote_softmax1_refinement.sh": '${scale_experiment}/SUCCESS',
         "remote_relu_hardening.sh": '${normalization_experiment}/SUCCESS',
         "remote_binary_qk_fallback.sh": '${activation_experiment}/SUCCESS',
+        "remote_integer_rmsnorm_screen.sh": '${binary_experiment}/SUCCESS',
     }
     for name, marker in expected_gate.items():
         source = _read(name)

@@ -256,6 +256,7 @@ scripts/remote_shared_qkv_scale_refinement.sh
 scripts/remote_softmax1_refinement.sh
 scripts/remote_relu_hardening.sh
 scripts/remote_binary_qk_fallback.sh
+scripts/remote_integer_rmsnorm_screen.sh
 
 # This fails closed unless every stage and checksum-complete run succeeded:
 ternary-overnight-summary artifacts/tinystories-28m \

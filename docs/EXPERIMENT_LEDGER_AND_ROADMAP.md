@@ -524,6 +524,16 @@ and undergo exhaustive validation. ReLU removes a floating nonlinear
 approximation from inference; it wins the endpoint only if its matched loss is
 no worse.
 
+After the matched binary-Q/K fallback, an inference-only normalization screen
+now compares unchanged floating RMSNorm with the exact fixed-point
+`integer_reference` runtime on the same selected checkpoint. It first runs a
+matched 200-batch gate, then exhaustive sequential validation for both paths,
+fixed generations, diagnostics, and a deployment export whose contract records
+the chosen normalization arithmetic. The predeclared practical gate is no more
+than +0.02 exhaustive validation loss. This PTQ screen receives no optimizer
+steps, so it cannot confuse additional training with arithmetic equivalence;
+QAT is required only if the exact path misses that gate.
+
 The July 2026 literature audit also rejects three tempting but invalid shortcuts:
 
 - TWLA's A4 is a mixed per-layer `{2,4,6,8}` budget, not uniform ternary

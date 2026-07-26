@@ -8,6 +8,7 @@ from typing import Any
 import torch
 from torch import Tensor
 
+from ternary_llm.config import VALID_RMS_NORM_QUANTIZATIONS
 from ternary_llm.packed import pack_ternary_codes, unpack_ternary_codes
 from ternary_llm.quantization import (
     ternary_code,
@@ -192,10 +193,25 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--rms-norm-quantization",
+        choices=VALID_RMS_NORM_QUANTIZATIONS,
+    )
     args = parser.parse_args()
 
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
-    config = checkpoint["config"]
+    stored_config = checkpoint["config"]
+    config = {
+        **stored_config,
+        "model": {
+            **stored_config["model"],
+            **(
+                {"rms_norm_quantization": args.rms_norm_quantization}
+                if args.rms_norm_quantization
+                else {}
+            ),
+        },
+    }
     threshold = float(config["model"]["weight_threshold"])
     packed_state = pack_deployment_state_dict(
         checkpoint["model"],

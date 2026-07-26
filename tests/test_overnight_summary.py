@@ -18,6 +18,7 @@ STAGES = (
     "softmax1-refinement",
     "relu-hardening",
     "binary-qk-fallback",
+    "integer-rmsnorm-screen",
 )
 
 
@@ -58,6 +59,10 @@ def _complete_chain(root: Path) -> None:
     _write_json(
         root / "binary-qk-fallback" / "comparison.json",
         {"selected_qkv_quantization": "binary_qk_ternary_v"},
+    )
+    _write_json(
+        root / "integer-rmsnorm-screen" / "comparison.json",
+        {"selected_rms_norm_quantization": "integer_reference"},
     )
 
 
