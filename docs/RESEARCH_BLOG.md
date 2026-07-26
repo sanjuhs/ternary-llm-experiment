@@ -933,6 +933,19 @@ retain the predeclared 30k control so its final result is unbiased. The
 diagnostic trend is the reason to run the already-declared clip sweep
 afterward—not permission to alter the control midstream.
 
+[TQL](https://openreview.net/forum?id=lwHSE1xYHH), published at ICML 2026,
+independently identifies attention-entropy collapse as a cause of unstable
+Transformer training and reports that explicitly controlling attention entropy
+stabilizes its larger value-function models. It is an RL result, not a
+quantized language-model result, so it does not validate our endpoint by
+itself. It does strengthen the diagnosis suggested by our simultaneous
+zero-route growth and entropy decline. If clip utilization, shared QKV scales,
+and Softmax-1 do not recover enough loss, the next clean experiment is an
+equal-budget QAT arm with an entropy-floor penalty against the float teacher,
+selected solely by exhaustive language-model validation. That arm must still
+use the same ternary/low-bit inference graph; the entropy term is training-only
+guidance, not a floating inference bypass.
+
 The live trainer predates automatic best-checkpoint retention and writes its
 resumable checkpoint every 5,000 steps. Before the next overwrite, we therefore
 preserved the exact step-10,000 checkpoint—the best checkpoint actually written
