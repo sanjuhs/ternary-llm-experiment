@@ -751,16 +751,53 @@ three-plane model improves the old one-code result by 2.44 loss, yet remains
 behind the 2.1126 A4 control and costs six physical code bits. It is therefore
 the best ternary-operator result, not the best storage result.
 
-The next controlled runs extend both survivors, compare two equal-storage
-layer allocations, harden the best graph from GELU to ReLU, and then repeat the
-ladder on a 27.4M-parameter model trained over the full 488M-token corpus. That
-last control is essential: quantization cannot be blamed for a target that the
-float teacher itself never reached.
-
-The extended exact-two-bit run is already complete. Another 5,000 QAT steps
+The extended exact-two-bit run completed another 5,000 QAT steps and
 moved loss from 4.332306 to **4.258285**. The final 2,000 steps recovered only
 0.005699, establishing a practical plateau. The two-bit representation is
 stable and trainable, but its current per-token, two-plane lattice discards too
 much residual information. Groupwise fixed-point scales, block reconstruction,
 or a residual-free architecture are now better-founded changes than simply
 training the same graph longer.
+
+## What the survivor experiments changed
+
+We ran the longer three-plane model, an exact three-binary-plane control, two
+equal-storage layer allocations, and a GELU-to-ReLU hardening stage. Every
+survivor was then evaluated over all 4,907,776 validation targets.
+
+| Activation route | Physical bits per residual scalar | Full loss | Perplexity |
+|---|---:|---:|---:|
+| Two binary planes | **2** | 4.251708 | 70.2252 |
+| Three binary planes | 3 | 3.750950 | 42.5615 |
+| Three ternary planes, extended | 6 | 2.598547 | 13.4442 |
+| Late-layer ternary mix `[2,2,2,3,3,3]` | 5 average | 2.889333 | 17.9813 |
+| NMSE-aware ternary mix `[3,2,3,2,2,3]` | 5 average | 2.858985 | 17.4438 |
+| Three ternary planes with ReLU | 6 | **2.518279** | **12.4072** |
+
+Three conclusions survive the exhaustive evaluation.
+
+First, exact two-bit storage is a genuine operating point, but not yet a
+quality-preserving one. Moving to three binary code bits recovers 0.50076 loss,
+yet remains far from the ternary-plane route.
+
+Second, layer allocation should follow measured quantization error. With the
+same average five physical bits, putting third planes in layers 0, 2, and 5
+beats putting them only in the final three layers by 0.03035 loss. That is the
+small-model version of the sensitivity-aware allocation advocated by TWLA and
+RobuQ.
+
+Third, ReLU is unexpectedly beneficial. Replacing GELU and adapting for 1,500
+steps improves the extended three-plane model by 0.08027 loss. ReLU is also
+friendlier to integer or comparator-based hardware. This removes one
+floating-point-looking operation while improving the language-model objective.
+
+The result is still not float parity: it spends six physical activation bits
+and remains above the A4 control. It is, however, the strongest evidence so far
+that a ternary-operand Transformer should be co-designed around its discrete
+forward path rather than obtained by mechanically rounding a conventional
+GELU Transformer.
+
+The next running control is a 27.4M-parameter float model trained over two full
+passes of the 488M-token corpus. That control is essential: quantization cannot
+be blamed for a target the float teacher itself never reached. It will be
+followed by matched ternary-weight and strict activation stages.

@@ -127,8 +127,8 @@ The current experiment matrix is:
 | Fixed Hadamard | 2 binary planes | 2.00 bits | Strict ASIC-friendly two-bit route |
 | Learned COAT basis | 2 sparse ternary planes | 3.17 bits | Test the value of explicit zero codes |
 | Fixed Hadamard | 2 sparse ternary planes | 3.17 bits | Strict projection counterpart |
-| Learned COAT basis | 3 sparse ternary planes | 4.75 bits | Capacity upper control |
-| Fixed Hadamard | 3 sparse ternary planes | 4.75 bits | Strict quality-oriented route |
+| Learned COAT basis | 3 sparse ternary planes | 6 physical bits | Capacity upper control |
+| Fixed Hadamard | 3 sparse ternary planes | 6 physical bits | Strict quality-oriented route |
 
 Every arm keeps ternary weights, ternary Q/K/V, and the integer-LUT attention
 path. The fixed Hadamard route uses only signs, additions, and a known
@@ -173,3 +173,10 @@ The experiment will be reported as successful only if:
 
 Until those gates pass, “fully ternary” means an executed research hypothesis,
 not a solved replacement for floating-point GPT.
+
+The small-model survivor audit has now completed. Its best exhaustive result is
+the ReLU-hardened three-ternary-plane model at loss **2.518279** and perplexity
+**12.4072**. The exact two-bit binary-plane model plateaus at loss **4.251708**.
+Those results validate the discrete training machinery, but neither answers the
+capacity gate. The 27.4M float control is running over the full 488M-token
+corpus before its matched ternary conversions.

@@ -218,15 +218,42 @@ loss from 4.3323 to 3.2882 and 2.6613.
 
 The three-plane result improves the previous best one-code residual loss of
 5.098914 by **2.437582**, but it is still 0.5487 behind the 2.1126 COAT-A4
-control and uses six physical activation bits. Longer exact-two-bit and
-three-plane runs, a layer-aware mixed allocation, and a ReLU hardening stage are
-running before the 27.4M-parameter capacity experiment.
+control and uses six physical activation bits.
 
 The exact-two-bit survivor has now completed 5,000 additional steps. It reached
 **4.258285** loss (perplexity **70.6887**), an improvement of 0.074021 over its
 short-run checkpoint. Only 0.005699 of that improvement occurred during the
 last 2,000 steps. This is a measured optimization plateau: more training with
 the same representation is not a credible route from 4.26 to the A4 range.
+
+### Residual-plane survivor audit
+
+We then evaluated every survivor over all 4,907,776 available non-overlapping
+validation targets. These are the authoritative numbers; the earlier table is
+the matched 100-batch screen used to select runs.
+
+| Survivor | Plane allocation | Physical bits / scalar | Full validation loss | Perplexity |
+|---|---|---:|---:|---:|
+| Exact binary | 2 per layer | **2** | 4.251708 | 70.2252 |
+| Exact binary | 3 per layer | 3 | 3.750950 | 42.5615 |
+| Ternary, short | 3 per layer | 6 | 2.651519 | 14.1756 |
+| Ternary, extended | 3 per layer | 6 | 2.598547 | 13.4442 |
+| Ternary, late-layer mix | `[2,2,2,3,3,3]` | 5 average | 2.889333 | 17.9813 |
+| Ternary, NMSE-aware mix | `[3,2,3,2,2,3]` | 5 average | **2.858985** | **17.4438** |
+| Ternary, ReLU-hardened | 3 per layer | 6 | **2.518279** | **12.4072** |
+
+The exact three-bit binary arm proves that another sign plane helps, but it
+still trails the six-bit ternary representation by 1.15 loss. At equal
+five-bit average storage, assigning extra planes to layers with the highest
+measured reconstruction error beats assigning them to the final three layers
+by 0.03035 loss. Most importantly, replacing GELU with ReLU improves the
+extended three-plane checkpoint by 0.08027. The integer-friendly nonlinearity
+is therefore a quality win in this experiment, not a concession.
+
+All seven checkpoints, exhaustive evaluations, diagnostics, resolved
+configurations, and fixed-prompt generations are mirrored under
+`residual-refinement-pilot/` on Hugging Face. The 27.4M-parameter float capacity
+control is now running over the full 488M-token training corpus.
 
 ### Two-bit attention experiments
 

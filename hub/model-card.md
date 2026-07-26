@@ -77,13 +77,17 @@ Every arm below retains ternary weights, ternary Q/K/V, and the low-bit integer
 attention route. “Physical bits” counts ordinary two-bit packing per ternary
 plane; it does not substitute entropy for actual storage.
 
-| Activation representation | Physical code bits | Loss after matched QAT |
+| Activation representation | Physical code bits | Exhaustive full loss |
 |---|---:|---:|
-| Two binary planes, fixed Hadamard | **2** | 4.33231 |
-| Two ternary planes, fixed Hadamard | 4 | 3.28821 |
-| Three ternary planes, fixed Hadamard | 6 | **2.66133** |
+| Two binary planes, fixed Hadamard | **2** | 4.25171 |
+| Three binary planes, fixed Hadamard | 3 | 3.75095 |
+| Three ternary planes, extended | 6 | 2.59855 |
+| NMSE-aware ternary layer mix | 5 average | 2.85899 |
+| Three ternary planes, ReLU-hardened | 6 | **2.51828** |
 
-The extended exact-two-bit run reached 4.25829 and plateaued. These checkpoints,
-metrics, and resolved configurations are in `residual-refinement-pilot/`.
-Multi-plane ternary models preserve ternary matrix operands but are not
-1.58-bit-per-activation models.
+The exact-two-bit run plateaued. Error-aware layer allocation beats a
+late-layer allocation at equal average storage, and replacing GELU with ReLU
+improves the best ternary-plane model. These checkpoints, exhaustive
+evaluations, diagnostics, generations, metrics, and resolved configurations are
+in `residual-refinement-pilot/`. Multi-plane ternary models preserve ternary
+matrix operands but are not 1.58-bit-per-activation models.

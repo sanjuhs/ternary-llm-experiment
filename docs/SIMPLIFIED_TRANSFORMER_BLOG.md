@@ -323,8 +323,28 @@ equal training, the fixed transform was a little better in every row. That is
 good news for hardware: Hadamard mixing is just a known pattern of additions
 and subtractions, so the model does not need a dense floating-point rotation.
 
+We then let the best versions train longer and read the entire validation book,
+not just a sample:
+
+| Finished version | Physical bits per number | Full loss |
+|---|---:|---:|
+| Two binary cards | **2** | 4.2517 |
+| Three binary cards | 3 | 3.7509 |
+| Three ternary cards | 6 | 2.5985 |
+| Five-bit average, extra cards in the noisiest layers | 5 | 2.8590 |
+| Three ternary cards plus simple ReLU | 6 | **2.5183** |
+
+Two surprises are useful. First, measuring which layers lose the most
+information is better than assuming the last layers deserve all the extra
+cards. Second, replacing the smooth GELU function with the much simpler ReLU
+made the model better. ReLU is basically “keep positive values, replace
+negative values with zero,” which is far easier to implement in small integer
+hardware.
+
 The lesson is simple. Rotation helps organize the notebook, but the number of
-symbols available in the notebook matters more. The next runs are testing
-whether longer training, spending extra cards only in sensitive layers, and a
-larger 27.4-million-parameter model can close the remaining gap without hiding
-the storage cost.
+symbols available in the notebook matters more. The strict two-bit version has
+now plateaued, so merely training it longer is unlikely to solve the quality
+gap. The promising route is to redesign the network for its ternary cards,
+spend extra cards only where measurements justify them, and keep every cost
+honest. A 27.4-million-parameter normal model is now training on the full
+dataset so the next comparison has a fair teacher and a fair target.
