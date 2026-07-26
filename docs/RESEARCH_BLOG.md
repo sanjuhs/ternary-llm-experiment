@@ -754,8 +754,9 @@ that collapse and found 79.62% zero probability codes.
 This is still a two-bit storage field, but it is functionally a sparse
 three-level router. Clip 2 instead maps the ideal ratios to `[0, 1, 2, 3]`,
 making every code reachable. The new matched refinement stage screens clips
-1.5, 2.0, and 2.5, adapts each for the same token budget, selects on the same
-held-out batches, and exhaustively evaluates a longer refinement of the winner.
+1.5, 2.0, and 2.5, adapts each for the same token budget, compares them with the
+already-mature clip-3 checkpoint on the same held-out batches, and exhaustively
+evaluates a longer refinement of the winner.
 It is a targeted test of codebook utilization, not an after-the-fact change to
 the already-running clip-3 baseline.
 

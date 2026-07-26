@@ -386,7 +386,8 @@ is therefore queued after the strict baseline:
 
 1. evaluate clips 1.5, 2.0, 2.5, and 3.0 on the same checkpoint and 200 batches;
 2. adapt clips 1.5, 2.0, and 2.5 for 2,000 matched steps each;
-3. select the lowest matched validation loss;
+3. select the lowest matched validation loss, including the mature clip-3
+   source as a rejection control;
 4. refine the winner for 5,000 more steps;
 5. run exhaustive sequential validation, diagnostics, and fixed generations.
 

@@ -68,6 +68,11 @@ candidates = {}
 for path in sorted(root.glob("post-adaptation-clip-*.json")):
     clip = path.stem.removeprefix("post-adaptation-clip-")
     candidates[clip] = json.loads(path.read_text())["loss"]
+# The source checkpoint is already the fully adapted clip-3 baseline, so compare
+# it directly rather than spending another redundant 2,000-step screen on it.
+candidates["3.0"] = json.loads(
+    (root / "pre-adaptation-clip-3.0.json").read_text()
+)["loss"]
 winner = min(candidates, key=candidates.get)
 print(winner)
 (root / "selection.json").write_text(
@@ -84,7 +89,11 @@ print(winner)
 PY
 )"
 
-selected_checkpoint="${base}/attention-clip-${selection}-screen/checkpoint.pt"
+if [[ "${selection}" == "3.0" ]]; then
+  selected_checkpoint="${source_checkpoint}"
+else
+  selected_checkpoint="${base}/attention-clip-${selection}-screen/checkpoint.pt"
+fi
 run_name="attention-clip-selected-${selection}-refine"
 
 uv run ternary-train \
