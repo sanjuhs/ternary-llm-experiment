@@ -404,6 +404,18 @@ TinyStories decoder and are now implemented as an ablation.
 
 ### Other recent architecture evidence
 
+[BinaryAttention](https://arxiv.org/abs/2603.09582), accepted at CVPR 2026,
+reduces Q and K to their signs and executes Q·K with bitwise operations. Its
+QAT, self-distillation, learned score bias, and sign-alignment loss recover
+quality on vision and diffusion Transformers, with a reported speed above 2x
+FlashAttention2 on A100. This is direct evidence that a binary-Q/K branch can
+preserve useful similarity geometry. It is not evidence for ternary V,
+Route·V, residual boundaries, or causal language modeling. If the current
+ternary-QKV clip and shared-scale arms cannot close the attention gap, the
+predeclared next fallback is a matched binary-Q/K, ternary-V arm using
+sign-aligned Q/K distillation. Binary operands remain valid ternary-hardware
+operands because they use the strict subset `{-1, +1}`.
+
 The live 27.4M strict run revealed that clip 3 leaves probability code 2 unused:
 the integer LUT ratios map to probability codes `[0, 0, 1, 3]`, and the first
 diagnostic measured 79.62% zero routes. A follow-up clip-utilization refinement

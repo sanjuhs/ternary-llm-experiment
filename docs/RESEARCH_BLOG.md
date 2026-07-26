@@ -774,6 +774,19 @@ paper says code will be released later. This is strong evidence for our
 integer-LUT denominator and requantization boundary, not evidence that ternary
 Q/K/V alone retain language-model quality.
 
+[BinaryAttention](https://arxiv.org/abs/2603.09582), accepted at CVPR 2026,
+shows a more aggressive but narrower result: Q and K retain only their signs,
+so Q·K becomes a bitwise one-bit operation. Quantization-aware training,
+self-distillation, a learned score bias, and an explicit sign-alignment
+objective recover the lost similarity structure; the authors report more than
+2x the speed of FlashAttention2 on an A100 and matched or improved accuracy on
+their vision and diffusion benchmarks. Binary values are a subset of ternary
+values, so this is a legitimate fallback for our Q/K operands. It does **not**
+establish ternary V, low-bit Route·V, low-bit residual boundaries, or
+autoregressive language-model loss. The transferable experiment is therefore
+a matched `binary Q/K + ternary V` arm with sign-aligned Q/K distillation—not a
+claim that the paper has solved our whole inference graph.
+
 [ELiTeFormer](https://arxiv.org/abs/2607.03652) is the closest July 2026
 hardware proof: it combines hybrid linear attention, ternary linear
 projections, and an FPGA processing element that replaces ternary

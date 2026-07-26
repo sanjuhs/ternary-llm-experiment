@@ -309,6 +309,7 @@ reading:
 | BWLA | Binary weights; usually six-bit activations; a small higher-precision correction | Shape values into a quantizer-friendly distribution |
 | TurboAttention | Q/K/V calculations at eight bits; KV memory mixes two- and four-bit heads | Integer attention, small lookup tables, and head sensitivity |
 | IntAttention | The attention pipeline stays integer, but uses eight-bit operands | Integer lookup-table softmax and integer normalization |
+| BinaryAttention | Q and K keep only their signs; the rest of the Transformer is not claimed fully ternary | Bitwise Q·K plus training that preserves sign-based similarity |
 | ELiTeFormer | Ternary linear projections with hybrid linear attention on an FPGA; the cache/state is compressed but not claimed ternary | A ternary hardware datapath and a possible alternative attention architecture |
 | FTerViT | Ternary weights and normalization parameters; eight-bit activations; vision rather than language | A possible ternary normalization design |
 
@@ -325,6 +326,15 @@ our signed residual planes use “minus, zero, plus.” TBT's generation quality
 still remained below its full-precision models, and its task scores are not
 comparable to TinyStories loss, so it is evidence that the route is real—not
 evidence that loss parity has already been solved.
+
+BinaryAttention offers another useful card trick. It throws away Q and K
+magnitudes and keeps only plus or minus, then teaches those signs to preserve
+the teacher's similarity pattern. That makes Q·K especially cheap, and binary
+is a valid subset of what a ternary chip can process. But the paper tested
+vision and diffusion models and did not make V, attention routing, or the
+residual stream ternary. We will treat it as a fallback Q/K recipe if our
+current ternary-QKV attention refinements fail, not as proof that the complete
+machine is solved.
 
 One training idea looks especially useful. Ordinary Transformers sometimes
 create a few enormous internal numbers. Compressing them is like drawing both a
