@@ -294,14 +294,17 @@ Recent papers support different boxes. BitNet v2 and TWLA show that four-bit
 activations can work very well with ternary weights. R2Q shows how two binary
 refinement planes can encode a two-bit weight. ExTernD gets close to normal-model
 quality by expanding each matrix into several ternary factors, but spends more
-storage and additions. Residual-free Transformers try to redesign the model so
-the values are easier to compress in the first place.
+storage and additions. An older but especially relevant result, TBT, generated
+summaries and translations with ternary weights **and** ternary activations.
+Residual-free Transformers try to redesign the model so the values are easier
+to compress in the first place.
 
 The newest results also explain why “two-bit” in a paper title needs careful
 reading:
 
 | Paper | What actually runs at inference | What we can borrow |
 |---|---|---|
+| TBT | Ternary BART/mBART weights and activations on generation tasks | Use `{-scale, 0, +scale}` for signed values, but `{0, scale, 2×scale}` for attention probabilities and ReLU outputs |
 | TWLA | Ternary weights; layers choose 2, 4, 6, or 8 activation bits under an average four-bit budget | Rotate values and give sensitive layers more room |
 | BWLA | Binary weights; usually six-bit activations; a small higher-precision correction | Shape values into a quantizer-friendly distribution |
 | TurboAttention | Q/K/V calculations at eight bits; KV memory mixes two- and four-bit heads | Integer attention, small lookup tables, and head sensitivity |
@@ -312,6 +315,16 @@ reading:
 None of these papers has already built our exact machine. That is why our
 experiment matters: we require the big operands to be ternary, forbid a hidden
 floating correction path, and measure story loss on the same text every time.
+
+TBT gives us one very practical correction to the mental model. A ternary
+activation does not always need to mean “minus, zero, plus.” Attention
+probabilities and ReLU outputs cannot be negative, so spending a code on minus
+would waste one third of the alphabet. TBT instead uses “zero, small, large”
+for those values. Our integer attention codes already follow that idea, while
+our signed residual planes use “minus, zero, plus.” TBT's generation quality
+still remained below its full-precision models, and its task scores are not
+comparable to TinyStories loss, so it is evidence that the route is real—not
+evidence that loss parity has already been solved.
 
 One training idea looks especially useful. Ordinary Transformers sometimes
 create a few enormous internal numbers. Compressing them is like drawing both a

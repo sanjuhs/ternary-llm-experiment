@@ -695,6 +695,35 @@ loss.
 
 ### What the newest papers add
 
+[Binary and Ternary Natural Language
+Generation](https://arxiv.org/abs/2306.01841), or TBT, is older than the papers
+below but is the closest published generative precedent. It trained BART and
+mBART with ternary weights and ternary activations for summarization and
+translation. The fully ternary model reached ROUGE-L **29.07** on XSUM and
+**38.30** on CNN/DailyMail, compared with **35.71** and **42.09** for the
+full-precision BART control; fully ternary mBART reached **21.70 BLEU** on
+WMT16 En-Ro versus **26.82** at full precision. This is real text-generation
+evidence, but it is encoder-decoder fine-tuning on downstream metrics rather
+than causal language-model pretraining or matched TinyStories loss.
+
+TBT contributes two mechanisms directly relevant to this project. First, its
+statistics-based isometric weight quantizer aims to use all three weight codes
+nearly uniformly while preserving scale. Our strict checkpoint already has
+approximately balanced `-1`, `0`, and `+1` weight fractions, so this condition
+is largely satisfied rather than a missing rescue. Second, its elastic
+activation quantizer distinguishes signed and nonnegative tensors:
+`{-alpha, 0, +alpha}` for signed residual-like values, but
+`{0, alpha, 2*alpha}` for Softmax and ReLU outputs. That is an important
+architectural clarification. Our signed ternary residual planes and nonnegative
+integer attention codebook already implement the same division of labor; the
+matched ReLU arm will test whether the remaining feed-forward activation can
+benefit from it. TBT does not document an end-to-end causal-LM integer
+accumulator/requantization contract, and its quality gaps mean it does not prove
+loss parity, but it rules out the claim that ternary activations cannot generate
+coherent text at all. The authors' released
+[training code](https://github.com/facebookresearch/Ternary_Binary_Transformer)
+also confirms the fully ternary `2-2-2` configurations.
+
 [BitNet v2](https://arxiv.org/abs/2504.18415) shows that online Hadamard mixing
 can stabilize W1.58A4 training where the corresponding unrotated A4 treatment
 diverges. It supports our fixed-Hadamard arm, but it does not establish A2.

@@ -479,6 +479,18 @@ The July 2026 literature audit also rejects three tempting but invalid shortcuts
 - BWLA's best stable joint result is W1A6 and its low-rank residual correction
   is not allowed by our inference contract.
 
+One older result is a direct positive precedent rather than a shortcut:
+
+- [TBT](https://arxiv.org/abs/2306.01841) trained fully ternary BART/mBART
+  (`2-2-2`) for summarization and translation. It uses
+  `{-alpha, 0, +alpha}` for signed activations and
+  `{0, alpha, 2*alpha}` for nonnegative Softmax/ReLU outputs. Its fully ternary
+  quality remained below full precision and it does not report causal-LM loss
+  or a complete integer runtime, but it validates the signed/nonnegative
+  codebook split already present in our residual and attention routes. Its
+  max-entropy weight lesson is also reflected in the running strict model's
+  near-balanced ternary weight fractions.
+
 Two positive hardware references still inform the implementation:
 
 - [IntAttention](https://arxiv.org/abs/2511.21513) demonstrates an integer-only

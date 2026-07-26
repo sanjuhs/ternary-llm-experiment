@@ -90,6 +90,15 @@ The matched calibrated COAT A4 activation control reaches **1.800118 loss** and
 float activations. Its checkpoint, exhaustive evaluation, diagnostics, and
 generations are under `tinystories-28m/coat-a4-quarter-pass/`.
 
+The closest published fully ternary generation precedent is
+[TBT](https://arxiv.org/abs/2306.01841), which trained ternary-weight,
+ternary-activation BART/mBART models for summarization and translation. Its key
+transferable rule is to use signed `{-scale, 0, +scale}` codes for residual-like
+values but nonnegative `{0, scale, 2*scale}` codes for Softmax/ReLU outputs.
+Our residual and attention routes follow that split. TBT still had a measurable
+quality gap and did not report causal-LM loss or a complete integer runtime, so
+it is evidence for feasibility rather than proof of TinyStories loss parity.
+
 ## Residual-plane refinement
 
 Every arm below retains ternary weights, ternary Q/K/V, and the low-bit integer
