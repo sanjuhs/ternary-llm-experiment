@@ -11,6 +11,8 @@ from torch import Tensor, nn
 from ternary_llm.config import Mode, ModelConfig
 from ternary_llm.projection import normalized_hadamard
 from ternary_llm.quantization import (
+    binarize_activation_with_learned_scale,
+    binary_activation_codes,
     code_histogram,
     progressive_activation_codes,
     quantize_activation,
@@ -147,7 +149,7 @@ class CausalSelfAttention(nn.Module):
         self.attention_rectification = config.attention_rectification
         self.attention_gate = config.attention_gate
         if (
-            self.qkv_quantization == "ternary"
+            self.qkv_quantization in {"ternary", "binary_qk_ternary_v"}
             and self.qkv_scale_granularity == "learned_head"
         ):
             self.qkv_log_scales = nn.Parameter(
@@ -211,7 +213,7 @@ class CausalSelfAttention(nn.Module):
         v: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor, dict[str, Tensor]]:
         code_tensors: dict[str, Tensor] = {}
-        if self.qkv_quantization == "ternary":
+        if self.qkv_quantization in {"ternary", "binary_qk_ternary_v"}:
             if self.qkv_scale_granularity == "learned_head":
                 if self.qkv_log_scales is None:
                     raise AssertionError("learned QKV scales are missing")
@@ -224,11 +226,20 @@ class CausalSelfAttention(nn.Module):
                         1,
                         1,
                     )
-                    quantized, codes = ternarize_activation_with_learned_scale(
-                        tensor,
-                        scale,
-                        self.activation_threshold,
-                    )
+                    if (
+                        self.qkv_quantization == "binary_qk_ternary_v"
+                        and name in {"q", "k"}
+                    ):
+                        quantized, codes = binarize_activation_with_learned_scale(
+                            tensor,
+                            scale,
+                        )
+                    else:
+                        quantized, codes = ternarize_activation_with_learned_scale(
+                            tensor,
+                            scale,
+                            self.activation_threshold,
+                        )
                     quantized_tensors.append(quantized)
                     code_tensors[name] = codes
                     detached_scale = scale.detach()
@@ -244,12 +255,31 @@ class CausalSelfAttention(nn.Module):
                 self.last_qkv_scale_stats = scale_stats
                 return (*quantized_tensors, code_tensors)
             for name, tensor in (("q", q), ("k", k), ("v", v)):
-                codes, _ = ternary_activation_codes(
-                    tensor,
-                    self.activation_threshold,
-                )
+                if (
+                    self.qkv_quantization == "binary_qk_ternary_v"
+                    and name in {"q", "k"}
+                ):
+                    codes, _ = binary_activation_codes(tensor)
+                else:
+                    codes, _ = ternary_activation_codes(
+                        tensor,
+                        self.activation_threshold,
+                    )
                 code_tensors[name] = codes
             self.last_qkv_scale_stats = {}
+            if self.qkv_quantization == "binary_qk_ternary_v":
+                q_codes, q_scale = binary_activation_codes(q)
+                k_codes, k_scale = binary_activation_codes(k)
+                v_codes, v_scale = ternary_activation_codes(
+                    v,
+                    self.activation_threshold,
+                )
+                return (
+                    q + (q_codes * q_scale - q).detach(),
+                    k + (k_codes * k_scale - k).detach(),
+                    v + (v_codes * v_scale - v).detach(),
+                    code_tensors,
+                )
             return (
                 ternarize_activation(q, self.activation_threshold),
                 ternarize_activation(k, self.activation_threshold),

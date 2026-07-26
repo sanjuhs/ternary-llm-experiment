@@ -2,6 +2,8 @@ import pytest
 import torch
 
 from ternary_llm.quantization import (
+    binarize_activation_with_learned_scale,
+    binary_activation_codes,
     int2_route_ternary_value_reference,
     integer_rms_norm_reference,
     integer_softmax_from_int2_codes,
@@ -308,6 +310,24 @@ def test_learned_scale_ternarization_updates_shadow_and_scale() -> None:
 
     assert set(codes.unique().tolist()) <= {-1.0, 0.0, 1.0}
     assert torch.equal(quantized.detach(), codes * 0.5)
+    quantized.square().sum().backward()
+    assert values.grad is not None and torch.isfinite(values.grad).all()
+    assert log_scale.grad is not None and log_scale.grad.abs().item() > 0
+
+
+def test_binary_activation_codes_and_learned_scale_use_exact_signs() -> None:
+    values = torch.tensor([[-0.8, -0.1, 0.0, 0.7]], requires_grad=True)
+    codes, dynamic_scale = binary_activation_codes(values)
+    log_scale = torch.tensor(0.5).log().requires_grad_()
+    quantized, learned_codes = binarize_activation_with_learned_scale(
+        values,
+        log_scale.exp(),
+    )
+
+    assert set(codes.unique().tolist()) == {-1.0, 1.0}
+    assert dynamic_scale.item() == pytest.approx(values.detach().abs().mean().item())
+    assert torch.equal(codes, learned_codes)
+    assert torch.equal(quantized.detach(), learned_codes * 0.5)
     quantized.square().sum().backward()
     assert values.grad is not None and torch.isfinite(values.grad).all()
     assert log_scale.grad is not None and log_scale.grad.abs().item() > 0

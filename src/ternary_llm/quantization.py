@@ -388,6 +388,43 @@ def ternary_activation_codes(
     return ternary_code(tensor.detach() / scale, threshold), scale
 
 
+def binary_activation_codes(
+    tensor: Tensor,
+    *,
+    eps: float = 1e-5,
+) -> tuple[Tensor, Tensor]:
+    """Return exact {-1, +1} codes and their optimal per-vector scale."""
+    codes = torch.where(
+        tensor.detach() >= 0,
+        torch.ones_like(tensor),
+        -torch.ones_like(tensor),
+    )
+    scale = _scale(tensor, -1, eps=eps)
+    return codes, scale
+
+
+def binarize_activation_with_learned_scale(
+    tensor: Tensor,
+    scale: Tensor,
+    *,
+    eps: float = 1e-5,
+) -> tuple[Tensor, Tensor]:
+    """Binarize with a broadcastable learned scale and STE gradients."""
+    positive_scale = scale.clamp_min(eps)
+    codes = torch.where(
+        tensor.detach() >= 0,
+        torch.ones_like(tensor),
+        -torch.ones_like(tensor),
+    )
+    dequantized = codes * positive_scale
+    quantized = (
+        tensor
+        + (dequantized - tensor).detach()
+        + (dequantized - dequantized.detach())
+    )
+    return quantized, codes
+
+
 def ternarize_activation_with_learned_scale(
     tensor: Tensor,
     scale: Tensor,

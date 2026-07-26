@@ -787,6 +787,15 @@ autoregressive language-model loss. The transferable experiment is therefore
 a matched `binary Q/K + ternary V` arm with sign-aligned Q/K distillation—not a
 claim that the paper has solved our whole inference graph.
 
+That fallback is now implemented as
+`qkv_quantization = "binary_qk_ternary_v"`. Dynamic per-token scales and
+factorizable learned per-head scales both preserve exact binary Q/K and ternary
+V code alphabets, with STE gradients for QAT. After the clip, shared-scale,
+Softmax-1, and ReLU gates complete, a matched experiment will train an
+unchanged ternary-QKV control and the binary-Q/K arm for 4,000 steps each from
+the same selected checkpoint. Both receive the same Q/K-similarity
+distillation weight, and selection uses exhaustive sequential validation.
+
 [ELiTeFormer](https://arxiv.org/abs/2607.03652) is the closest July 2026
 hardware proof: it combines hybrid linear attention, ternary linear
 projections, and an FPGA processing element that replaces ternary

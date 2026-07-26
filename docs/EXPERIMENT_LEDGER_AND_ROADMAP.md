@@ -416,6 +416,13 @@ predeclared next fallback is a matched binary-Q/K, ternary-V arm using
 sign-aligned Q/K distillation. Binary operands remain valid ternary-hardware
 operands because they use the strict subset `{-1, +1}`.
 
+The fallback is implemented as `binary_qk_ternary_v`, including dynamic and
+learned-head-scale paths, diagnostic alphabet checks, deployment-contract
+support, and a matched remote experiment. After the four primary refinements,
+the selected endpoint seeds a 4,000-step ternary-QKV control and a 4,000-step
+binary-Q/K arm. Both use the same Q/K-similarity distillation objective; only
+the Q/K alphabet differs.
+
 The live 27.4M strict run revealed that clip 3 leaves probability code 2 unused:
 the integer LUT ratios map to probability codes `[0, 0, 1, 3]`, and the first
 diagnostic measured 79.62% zero routes. A follow-up clip-utilization refinement

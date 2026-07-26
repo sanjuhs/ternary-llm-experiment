@@ -106,3 +106,23 @@ def test_inference_contract_rejects_dynamic_scales_and_gelu() -> None:
         "factorizable_shared_qkv_scales",
         "integer_friendly_ffn_activation",
     }
+
+
+def test_inference_contract_accepts_binary_qk_as_ternary_subset() -> None:
+    config = {
+        "mode": "hadamard_progressive",
+        "model": {
+            "activation_encoding": "residual_ternary",
+            "qkv_quantization": "binary_qk_ternary_v",
+            "qkv_scale_granularity": "learned_head",
+            "attention_quantization": "score_lut_prob_int2",
+            "attention_rectification": "none",
+            "attention_gate": "none",
+            "feed_forward_activation": "relu",
+            "dropout": 0.0,
+        },
+    }
+
+    contract = inference_contract(config)
+
+    assert contract["ternary_operand_contract"]["satisfied"]

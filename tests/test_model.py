@@ -219,6 +219,42 @@ def test_learned_head_qkv_scales_receive_gradients_and_report_stats() -> None:
         assert stats[f"{name}_scale_mean"] == pytest.approx(0.5)
 
 
+@pytest.mark.parametrize("granularity", ["token", "learned_head"])
+def test_binary_qk_ternary_v_uses_strict_operand_alphabets(
+    granularity: str,
+) -> None:
+    config = ModelConfig(
+        vocab_size=300,
+        context_length=8,
+        d_model=16,
+        n_layers=1,
+        n_heads=2,
+        ff_multiplier=2,
+        qkv_quantization="binary_qk_ternary_v",
+        qkv_scale_granularity=granularity,  # type: ignore[arg-type]
+        qkv_scale_initial=0.5,
+        attention_quantization="score_lut_prob_int2",
+    )
+    model = TernaryGPT(config, "ternary_weights").eval()
+    inputs = torch.randint(0, config.vocab_size, (2, config.context_length))
+    _, loss = model(inputs, inputs)
+
+    assert loss is not None and torch.isfinite(loss)
+    loss.backward()
+    stats = model.attention_stats()["aggregate"]
+    assert stats["q_zero_fraction"] == 0.0
+    assert stats["k_zero_fraction"] == 0.0
+    assert stats["v_zero_fraction"] > 0.0
+    if granularity == "learned_head":
+        scale_parameters = [
+            parameter
+            for name, parameter in model.named_parameters()
+            if name.endswith("qkv_log_scales")
+        ]
+        assert len(scale_parameters) == config.n_layers
+        assert all(parameter.grad is not None for parameter in scale_parameters)
+
+
 def test_attention_and_qk_distillation_compute_student_gradients() -> None:
     from dataclasses import replace
 

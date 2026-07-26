@@ -145,7 +145,8 @@ def inference_contract(config: dict[str, Any]) -> dict[str, Any]:
         "quantized_residual_boundaries": uses_quantized_activations(mode),
         "residuals_use_binary_or_ternary_planes": model.get("activation_encoding")
         in {"residual_binary", "residual_ternary"},
-        "ternary_qkv": model.get("qkv_quantization") == "ternary",
+        "ternary_qkv": model.get("qkv_quantization")
+        in {"ternary", "binary_qk_ternary_v"},
         "factorizable_shared_qkv_scales": model.get("qkv_scale_granularity")
         == "learned_head",
         "integer_lut_two_bit_attention": model.get("attention_quantization")

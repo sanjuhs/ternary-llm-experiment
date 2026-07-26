@@ -32,8 +32,12 @@ VALID_ATTENTION_NORMALIZATIONS: tuple[AttentionNormalization, ...] = (
     "softmax1",
 )
 
-QKVQuantization = Literal["inherit", "ternary"]
-VALID_QKV_QUANTIZATIONS: tuple[QKVQuantization, ...] = ("inherit", "ternary")
+QKVQuantization = Literal["inherit", "ternary", "binary_qk_ternary_v"]
+VALID_QKV_QUANTIZATIONS: tuple[QKVQuantization, ...] = (
+    "inherit",
+    "ternary",
+    "binary_qk_ternary_v",
+)
 
 QKVScaleGranularity = Literal["token", "learned_head"]
 VALID_QKV_SCALE_GRANULARITIES: tuple[QKVScaleGranularity, ...] = (
@@ -179,10 +183,11 @@ class ModelConfig:
             )
         if (
             self.qkv_scale_granularity != "token"
-            and self.qkv_quantization != "ternary"
+            and self.qkv_quantization
+            not in {"ternary", "binary_qk_ternary_v"}
         ):
             raise ValueError(
-                "non-token QKV scales require qkv_quantization='ternary'"
+                "non-token QKV scales require quantized Q/K/V"
             )
         if self.qkv_scale_initial <= 0:
             raise ValueError("qkv_scale_initial must be positive")
