@@ -851,6 +851,17 @@ Transformer. Its activations remain eight-bit, and it is not a language model,
 but TernaryLayerNorm is a concrete candidate for removing one of our remaining
 learned full-precision parameter classes.
 
+[RobuQ](https://arxiv.org/abs/2509.23582), revised in May 2026 and accepted by
+ICML 2026, supplies complementary evidence at the activation boundary. It
+reports ternary weights with average two-bit activations in diffusion
+Transformers by using a Hadamard transform to regularize per-token
+distributions and activation-only mixed precision to protect sensitive layers.
+It is not an autoregressive language model and does not prove ternary attention
+or residual operands. Its transferable claims are narrower: orthogonal mixing
+can make a tiny activation codebook more stable, and layerwise error should
+control where scarce extra bits are spent. Those are exactly the two hypotheses
+tested by our fixed-Hadamard path and equal-storage NMSE-aware plane allocation.
+
 [PT2-LLM](https://openreview.net/forum?id=7QZanjCD6M) is a complementary
 weight-only result. Its iterative ternary fitting, activation-aware grid
 alignment, and structural-similarity column reordering improve post-training
