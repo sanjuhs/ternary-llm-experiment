@@ -37,8 +37,9 @@ The strict residual-curriculum outputs are preserved in
   ternary-activation arms;
 - four-code attention-score, four-code attention-probability, combined, and
   binary-routing experiments with code-use diagnostics;
-- independently forced ternary Q/K/V, Q-ViT-style rectification, binary no-op
-  gates, and an integer four-entry exponential lookup reference;
+- independently forced ternary Q/K/V, a binary-Q/K-plus-ternary-V fallback,
+  Q-ViT-style rectification, binary no-op gates, and an integer four-entry
+  exponential lookup reference;
 - a BWTA-inspired progressive residual alphabet with magnitude alignment,
   per-layer code-use diagnostics, hidden-state distillation, and an exact
   three-code endpoint;
@@ -247,10 +248,21 @@ scripts/remote_gated_attention_pilot.sh
 
 # Progressively reduce every residual boundary to exactly three codes:
 scripts/remote_fully_ternary_pilot.sh
+
+# After the 27.4M strict control completes, run the matched refinement chain:
+scripts/remote_finalize_strict.sh
+scripts/remote_attention_clip_refinement.sh
+scripts/remote_shared_qkv_scale_refinement.sh
+scripts/remote_softmax1_refinement.sh
+scripts/remote_relu_hardening.sh
+scripts/remote_binary_qk_fallback.sh
 ```
 
-The full runner resumes any existing per-mode checkpoint. Copy `artifacts/` back to
-the local repository before stopping or deleting a pod.
+The refinement scripts are ordered and idempotent: each requires the prior
+stage's selection metadata and writes `SUCCESS` only after exhaustive
+validation, generations, packed export, checksums, and artifact audit. The
+full runner resumes any existing per-mode checkpoint. Copy `artifacts/` back
+to the local repository before stopping or deleting a pod.
 
 The helper scripts accept the pod host, SSH port, and private-key path:
 
@@ -272,6 +284,12 @@ uv run ternary-generate \
   --prompt "Once upon a time" \
   --max-new-tokens 80
 ```
+
+The BinaryAttention-inspired fallback is available to training and evaluation
+as `--qkv-quantization binary_qk_ternary_v`. It encodes Q/K as exact signs and
+V as ternary codes; use `--qkv-scale-granularity learned_head` for the
+factorizable deployment path. This is stricter than the source paper's
+eight-bit Route·V path and intentionally omits its optional dense/context bias.
 
 Use `--device cpu`, `--device mps`, or `--device cuda` to override automatic device
 selection. Checkpoints include the resolved model and training configuration.

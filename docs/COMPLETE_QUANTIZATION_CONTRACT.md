@@ -10,7 +10,7 @@ implementable definition.
 |---|---:|---:|
 | Embedding, normalization, and linear weights | ternary, packed in 2 bits | ternary fake quantization plus deployment export |
 | Residual-stream activations | binary/ternary code planes | fixed-Hadamard residual-plane variants |
-| Q, K, and V operands | ternary | independently forced by `qkv_quantization = "ternary"` |
+| Q, K, and V operands | ternary, permitting binary as a strict subset | `ternary`, plus matched `binary_qk_ternary_v` fallback |
 | Softmax input | four codes (2 bits) | `score_lut_prob_int2` |
 | Normalized attention routes | four codes (2 bits) | integer-LUT route quantization |
 | KV cache | ternary K/V codes plus shared head scales | learned-head-scale comparison |
