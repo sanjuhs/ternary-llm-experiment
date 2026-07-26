@@ -805,6 +805,14 @@ being mistaken for an architectural improvement. The shared-head-scale stage
 uses the same rule: its learned-scale arm and per-token-scale control receive
 equal optimizer budgets.
 
+One additional boundary remains avoidably floating: GELU. ReLU needs only a
+sign comparison and zeroing operation, so it is a cleaner custom-ASIC target.
+Our earlier small-model three-plane experiment improved from 2.598547 with the
+longer GELU arm to 2.518279 after ReLU hardening. The final queued ablation now
+trains equal-budget GELU and ReLU arms from whichever integer-attention
+normalization wins exhaustive validation. This is a test, not an assumption:
+the ReLU endpoint is selected only if it preserves or improves matched loss.
+
 The live 27.4M strict control supports that ordering. At 2k, 4k, 6k, and 8k
 steps its matched validation loss improved from **2.41839** to **2.35827**,
 **2.30490**, and **2.26820** (perplexity **9.66195** at 8k). Over the same

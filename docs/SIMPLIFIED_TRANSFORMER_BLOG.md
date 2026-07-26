@@ -323,6 +323,13 @@ attention slot: the head may choose “send no message” instead of inventing a
 extreme score. We will test that only after the current matched clip and scale
 experiments, so it has a clean control.
 
+There is one more ordinary Transformer component to simplify. GELU is a curved
+activation function that normally needs a floating approximation. ReLU simply
+asks whether a number is positive and otherwise replaces it with zero. Our
+small experiment slightly favored ReLU, so the large experiment will give GELU
+and ReLU exactly the same extra training budget. If ReLU keeps the loss, it
+removes another awkward operation from the future ternary chip.
+
 That gives us two sensible products rather than one vague promise:
 
 1. a **strict two-bit model**, where storage wins but quality may be lower; and

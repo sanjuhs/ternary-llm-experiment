@@ -460,6 +460,16 @@ scale checkpoint exists, standard Softmax and Softmax-1 will start from that
 same checkpoint, receive 4,000 steps each, and undergo exhaustive validation.
 The reported delta therefore has a matched optimizer-budget control.
 
+The selected attention checkpoint then enters one final nonlinear hardening
+test. The current strict graph still contains GELU, whose tanh/polynomial
+approximation is not a ternary operation. Earlier small-model evidence favored
+ReLU-hardened three-plane residuals at loss 2.518279 versus 2.598547 for the
+longer GELU arm. At 27.4M parameters, unchanged GELU and ReLU will therefore
+start from the same selected attention checkpoint, receive 4,000 steps each,
+and undergo exhaustive validation. ReLU removes a floating nonlinear
+approximation from inference; it wins the endpoint only if its matched loss is
+no worse.
+
 The July 2026 literature audit also rejects three tempting but invalid shortcuts:
 
 - TWLA's A4 is a mixed per-layer `{2,4,6,8}` budget, not uniform ternary
