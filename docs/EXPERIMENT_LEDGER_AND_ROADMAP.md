@@ -421,14 +421,15 @@ all four probability codes `[0, 1, 2, 3]`. The sweep still allows the data to
 reject that theoretical advantage if a different clip produces lower loss.
 
 The longer clip-3 control is still running. Its matched validation trajectory
-through step 8,000 is:
+through step 10,000 is:
 
 | Step | Validation loss | Perplexity | Zero routes | Attention entropy | Residual NMSE |
 |---:|---:|---:|---:|---:|---:|
 | 2,000 | 2.418388 | 11.2278 | 79.62% | 2.3844 | 0.01670 |
 | 4,000 | 2.358272 | 10.5727 | 82.86% | 2.2176 | 0.01737 |
 | 6,000 | 2.304905 | 10.0232 | 84.68% | 2.1034 | 0.01806 |
-| 8,000 | **2.268195** | **9.6619** | **85.77%** | **2.0259** | **0.01899** |
+| 8,000 | 2.268195 | 9.6619 | 85.77% | 2.0259 | 0.01899 |
+| 10,000 | **2.250819** | **9.4955** | **86.25%** | **1.9860** | **0.01992** |
 
 Loss is still improving, so the control must not be stopped early. The rising
 zero-route fraction, falling entropy, and permanently unused probability code

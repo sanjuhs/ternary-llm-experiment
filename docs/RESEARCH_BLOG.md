@@ -813,11 +813,12 @@ trains equal-budget GELU and ReLU arms from whichever integer-attention
 normalization wins exhaustive validation. This is a test, not an assumption:
 the ReLU endpoint is selected only if it preserves or improves matched loss.
 
-The live 27.4M strict control supports that ordering. At 2k, 4k, 6k, and 8k
-steps its matched validation loss improved from **2.41839** to **2.35827**,
-**2.30490**, and **2.26820** (perplexity **9.66195** at 8k). Over the same
-checkpoints the zero-route fraction rose from 79.62% to 85.77%, attention
-entropy fell from 2.3844 to 2.0259, and probability code 2 remained unused.
+The live 27.4M strict control supports that ordering. At 2k, 4k, 6k, 8k, and
+10k steps its matched validation loss improved from **2.41839** to **2.35827**,
+**2.30490**, **2.26820**, and **2.25082** (perplexity **9.49551** at 10k).
+Over the same checkpoints the zero-route fraction rose from 79.62% to 86.25%,
+attention entropy fell from 2.3844 to 1.9860, and probability code 2 remained
+unused.
 The model is still learning, so we retain the 30k control. The diagnostic trend
 is the reason to run the already-declared clip sweep afterward—not permission
 to alter the control midstream.
