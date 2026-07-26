@@ -305,6 +305,7 @@ reading:
 | Paper | What actually runs at inference | What we can borrow |
 |---|---|---|
 | TBT | Ternary BART/mBART weights and activations on generation tasks | Use `{-scale, 0, +scale}` for signed values, but `{0, scale, 2×scale}` for attention probabilities and ReLU outputs |
+| QuEST | One- to four-bit weights and activations during the forward pass; four bits gives its best accuracy-per-byte result | Keep our ternary inference values, but distrust training gradients from badly quantized entries |
 | TWLA | Ternary weights; layers choose 2, 4, 6, or 8 activation bits under an average four-bit budget | Rotate values and give sensitive layers more room |
 | BWLA | Binary weights; usually six-bit activations; a small higher-precision correction | Shape values into a quantizer-friendly distribution |
 | TurboAttention | Q/K/V calculations at eight bits; KV memory mixes two- and four-bit heads | Integer attention, small lookup tables, and head sensitivity |

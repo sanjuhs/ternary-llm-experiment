@@ -614,6 +614,18 @@ The July 2026 literature audit also rejects three tempting but invalid shortcuts
 - BWLA's best stable joint result is W1A6 and its low-rank residual correction
   is not allowed by our inference contract.
 
+One new training route survives that audit without changing the inference
+contract:
+
+- [QuEST](https://arxiv.org/abs/2502.05003) stably trains one-bit weight and
+  activation forward passes using Hadamard normalization, MSE-optimal
+  quantization, and a trust gradient estimator. Its best accuracy/storage
+  frontier is W4A4 and it does not claim ternary Softmax or normalization, so it
+  is not an endpoint result. After the current contract ladder, we can test only
+  its error-aware gradient rule while preserving our ternary QKV and residual
+  codebooks. The required comparison is QuEST-style trust masking versus the
+  current STE from the same selected checkpoint and for the same token budget.
+
 One older result is a direct positive precedent rather than a shortcut:
 
 - [TBT](https://arxiv.org/abs/2306.01841) trained fully ternary BART/mBART

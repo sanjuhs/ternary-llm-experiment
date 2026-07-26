@@ -728,6 +728,20 @@ also confirms the fully ternary `2-2-2` configurations.
 can stabilize W1.58A4 training where the corresponding unrotated A4 treatment
 diverges. It supports our fixed-Hadamard arm, but it does not establish A2.
 
+[QuEST](https://arxiv.org/abs/2502.05003), published at ICML 2025, is the
+strongest direct evidence that very-low-bit **forward operands** can still be
+trained stably. It trains Llama-family models from 30M to 800M parameters with
+weights and activations from one to four bits. Its two transferable ideas are
+Hadamard normalization followed by MSE-optimal code fitting, and a “trust”
+gradient estimator that suppresses updates where forward quantization error
+makes the surrogate gradient unreliable. The paper's Pareto result favors W4A4,
+not W1A1, and “weights and activations” does not mean that Softmax,
+normalization, accumulation, requantization, and sampling are all ternary.
+Therefore it does not satisfy our strict endpoint by itself. It does motivate
+a matched next ablation: retain our ternary forward codebooks and add a
+QuEST-style error-aware gradient mask, comparing it with the existing STE under
+the same checkpoint, token budget, and exhaustive validation set.
+
 [R2Q](https://arxiv.org/abs/2511.21736) decomposes a two-bit weight into two
 successive binary residual kernels. Our exact-two-bit activation arm adapts that
 representation to residual states. That activation use is our hypothesis, not a
