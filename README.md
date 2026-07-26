@@ -307,3 +307,10 @@ uv run ternary-export \
   --checkpoint artifacts/full-stage-a/ternary_weights/checkpoint.pt \
   --output artifacts/full-stage-a/ternary_weights/model-2bit.pt
 ```
+
+The `ternary-deployment-v2` artifact packs ternary operands at two bits, stores
+learned positive Q/K/V head scales as INT16 fixed-point values, preserves
+non-floating buffers, and includes a machine-readable inference-contract
+checklist. A packed checkpoint is therefore not automatically labeled
+end-to-end integer: remaining RMSNorm, requantization, or sampling boundaries
+are reported in the export metadata.

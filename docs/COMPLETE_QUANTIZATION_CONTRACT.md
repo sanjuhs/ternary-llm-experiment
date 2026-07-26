@@ -8,13 +8,14 @@ implementable definition.
 
 | Boundary | Strict target | Current experiment |
 |---|---:|---:|
-| Embedding and linear weights | ternary, packed in 2 bits | ternary fake quantization; packed export exists |
-| Residual-stream activations | ternary or INT4 | COAT/Hadamard ternary and A4 variants |
+| Embedding, normalization, and linear weights | ternary, packed in 2 bits | ternary fake quantization plus deployment export |
+| Residual-stream activations | binary/ternary code planes | fixed-Hadamard residual-plane variants |
 | Q, K, and V operands | ternary | independently forced by `qkv_quantization = "ternary"` |
-| Softmax input | four codes (2 bits) | `score_int2` |
-| Normalized attention routes | four codes or one bit | `prob_int2`, `prob_binary` |
-| KV cache | same low-bit format as K/V | planned runtime experiment |
-| Model output between blocks | ternary or INT4 | quantized residual boundary |
+| Softmax input | four codes (2 bits) | `score_lut_prob_int2` |
+| Normalized attention routes | four codes (2 bits) | integer-LUT route quantization |
+| KV cache | ternary K/V codes plus shared head scales | learned-head-scale comparison |
+| Feed-forward nonlinearity | comparison/zeroing only | matched GELU-versus-ReLU hardening |
+| Model output between blocks | binary/ternary code planes | quantized residual boundary |
 
 The repository includes exact arithmetic references for both linear projections
 and attention Q·K. The Q·K reference converts Q and K into exact ternary code
@@ -34,7 +35,8 @@ The learned head-shared branch is now executable. Each attention block stores
 three small vectors of positive scales—one Q, K, and V value per head. The
 large tensors remain ternary codes; Q·K and Route·V use the packed codes, and
 the corresponding scale products can be applied after accumulation. This is an
-opt-in experiment and does not alter the running per-token-scale baseline.
+opt-in experiment and does not alter the running per-token-scale baseline. It
+is evaluated against an equal-budget per-token control.
 
 An exact Route·V arithmetic reference accompanies it. Each `{0,1,2,3}` route
 code is split into low and high binary planes. Both planes multiply ternary V
@@ -42,6 +44,21 @@ codes into INT32 accumulators; the high-plane result is shifted once, the two
 planes are added, the integer route-count denominator is applied, and the one
 shared V scale reconstructs the output. Tests compare this result with the
 explicit reconstructed tensors.
+
+## What the deployment export proves
+
+`ternary-export` now emits `ternary-deployment-v2`. It does not blindly call
+every small parameter “ternary”:
+
+- matrix, embedding, normalization, and fixed-Hadamard tensors use packed
+  two-bit ternary codes plus their row/tensor scale;
+- learned positive Q/K/V head scales use explicit INT16 fixed-point codes;
+- Boolean readiness buffers are preserved losslessly;
+- the artifact records an inference-contract checklist and any violations.
+
+Every completed downstream arm produces this export and its metadata. This
+prevents a per-token-scale or GELU checkpoint from being mislabeled as the
+final ASIC-ready endpoint merely because its shadow weights can be packed.
 
 ## What cannot literally stay in two bits
 
@@ -66,6 +83,13 @@ the next ternary or INT4 boundary. In this model, Q·K needs about seven signed
 bits, width-256 linear reductions about ten, and width-1,024 feed-forward
 reductions about twelve. INT32 is a convenient implementation container, not the
 minimum ASIC width.
+
+The present end-to-end PyTorch path is still not a fused integer runtime.
+RMSNorm's reciprocal square root, scale/requantization arithmetic, and the final
+token-sampling softmax remain explicit deployment boundaries. The export says
+so. ReLU removes GELU if its matched quality permits; a fixed-point RMSNorm or
+TernaryLayerNorm implementation remains necessary before claiming every
+nonlinear Transformer operation has an integer hardware reference.
 
 ## Matched attention experiment
 

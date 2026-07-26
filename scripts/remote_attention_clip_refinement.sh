@@ -147,6 +147,11 @@ do
     >> "${run_dir}/generations.txt"
 done
 
+uv run ternary-export \
+  --checkpoint "${run_dir}/checkpoint.pt" \
+  --output "${run_dir}/model-2bit.pt" \
+  > "${run_dir}/packed-export.json"
+
 sha256sum "${run_dir}/checkpoint.pt" > "${run_dir}/SHA256SUMS"
 printf 'selected_clip=%s\nrun_dir=%s\n' \
   "${selection}" "${run_dir}" > "${experiment}/SUCCESS"
