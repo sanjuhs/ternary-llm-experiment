@@ -83,22 +83,68 @@ def _validate_metrics(path: Path) -> int:
     return validation_rows
 
 
-def _verify_declared_checkpoint_hash(run_dir: Path, checkpoint_hash: str) -> None:
+def _checksum_declarations(run_dir: Path) -> dict[str, str]:
     checksum_path = run_dir / "SHA256SUMS"
     if not checksum_path.exists():
-        return
-    declarations = {}
-    for line in checksum_path.read_text().splitlines():
+        return {}
+    declarations: dict[str, str] = {}
+    for line_number, line in enumerate(
+        checksum_path.read_text().splitlines(),
+        start=1,
+    ):
         parts = line.split()
-        if len(parts) >= 2:
-            declarations[Path(parts[-1].lstrip("*")).name] = parts[0]
-    declared = declarations.get("checkpoint.pt")
-    if declared is None:
+        if len(parts) < 2:
+            raise ArtifactValidationError(
+                f"SHA256SUMS:{line_number} is not a checksum declaration"
+            )
+        digest = parts[0].lower()
+        if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+            raise ArtifactValidationError(
+                f"SHA256SUMS:{line_number} has an invalid SHA-256 digest"
+            )
+        name = Path(parts[-1].lstrip("*")).name
+        existing = declarations.get(name)
+        if existing is not None and existing != digest:
+            raise ArtifactValidationError(
+                f"SHA256SUMS declares conflicting hashes for {name}"
+            )
+        declarations[name] = digest
+    return declarations
+
+
+def _verify_declared_hashes(
+    run_dir: Path,
+    files: dict[str, dict[str, Any]],
+    *,
+    require_complete: bool,
+) -> None:
+    declarations = _checksum_declarations(run_dir)
+    if not declarations:
+        if require_complete:
+            raise ArtifactValidationError("complete SHA256SUMS is required")
+        return
+    if "checkpoint.pt" not in declarations:
         raise ArtifactValidationError("SHA256SUMS does not declare checkpoint.pt")
-    if declared != checkpoint_hash:
-        raise ArtifactValidationError(
-            "SHA256SUMS checkpoint hash does not match checkpoint.pt"
-        )
+
+    expected = set(files) - {"SHA256SUMS"}
+    if require_complete:
+        missing = sorted(expected - declarations.keys())
+        if missing:
+            raise ArtifactValidationError(
+                "SHA256SUMS is missing required artifacts: " + ", ".join(missing)
+            )
+
+    for name, declared in declarations.items():
+        path = run_dir / name
+        if not path.is_file():
+            raise ArtifactValidationError(
+                f"SHA256SUMS declares missing artifact: {name}"
+            )
+        actual = _sha256(path)
+        if declared != actual:
+            raise ArtifactValidationError(
+                f"SHA256SUMS hash for {name} does not match the file"
+            )
 
 
 def _validate_packed_export(run_dir: Path) -> dict[str, Any] | None:
@@ -182,6 +228,7 @@ def build_run_manifest(
     run_dir: Path,
     *,
     required_files: tuple[str, ...] = DEFAULT_REQUIRED_FILES,
+    require_complete_checksums: bool = False,
 ) -> dict[str, Any]:
     """Validate a completed run and return a deterministic content manifest."""
     run_dir = run_dir.resolve()
@@ -201,10 +248,6 @@ def build_run_manifest(
     _load_json_object(run_dir / "diagnostics.json")
     full_validation = _validate_full_validation(run_dir / "full-validation.json")
     validation_rows = _validate_metrics(run_dir / "metrics.jsonl")
-    _verify_declared_checkpoint_hash(
-        run_dir,
-        files["checkpoint.pt"]["sha256"],
-    )
     deployment = _validate_packed_export(run_dir)
 
     optional_files = ("SHA256SUMS", "model-2bit.pt", "packed-export.json")
@@ -212,6 +255,12 @@ def build_run_manifest(
         path = run_dir / name
         if path.is_file() and path.stat().st_size > 0:
             files[name] = {"bytes": path.stat().st_size, "sha256": _sha256(path)}
+
+    _verify_declared_hashes(
+        run_dir,
+        files,
+        require_complete=require_complete_checksums,
+    )
 
     manifest = {
         "run": run_dir.name,
@@ -237,10 +286,22 @@ def main() -> None:
         default=[],
         help="additional required filename relative to every run directory",
     )
+    parser.add_argument(
+        "--require-complete-checksums",
+        action="store_true",
+        help=(
+            "require SHA256SUMS to declare every required and deployment "
+            "artifact in the run"
+        ),
+    )
     args = parser.parse_args()
     required = (*DEFAULT_REQUIRED_FILES, *args.require_file)
     manifests = [
-        build_run_manifest(run_dir, required_files=required)
+        build_run_manifest(
+            run_dir,
+            required_files=required,
+            require_complete_checksums=args.require_complete_checksums,
+        )
         for run_dir in args.run_dirs
     ]
     print(json.dumps({"runs": manifests}, indent=2, sort_keys=True))

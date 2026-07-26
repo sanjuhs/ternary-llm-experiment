@@ -31,9 +31,23 @@ uv run ternary-export \
   --output "${run_dir}/model-2bit.pt" \
   > "${run_dir}/packed-export.json"
 
-sha256sum "${run_dir}/checkpoint.pt" > "${run_dir}/SHA256SUMS"
+(
+  cd "${run_dir}"
+  sha256sum \
+    checkpoint.pt \
+    resolved-config.json \
+    metrics.jsonl \
+    full-validation.json \
+    diagnostics.json \
+    generations.txt \
+    model-2bit.pt \
+    packed-export.json \
+    > SHA256SUMS
+)
 
-uv run ternary-audit-artifacts "${run_dir}" \
+uv run ternary-audit-artifacts \
+  --require-complete-checksums \
+  "${run_dir}" \
   > "${run_dir}/artifact-audit.json"
 
 printf 'run_dir=%s\n' "${run_dir}" > "${run_dir}/SUCCESS"

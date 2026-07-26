@@ -25,6 +25,25 @@ def _write_completed_run(run_dir: Path) -> None:
     (run_dir / "SHA256SUMS").write_text(f"{digest}  checkpoint.pt\n")
 
 
+def _write_complete_checksums(run_dir: Path) -> None:
+    names = [
+        "checkpoint.pt",
+        "resolved-config.json",
+        "metrics.jsonl",
+        "full-validation.json",
+        "diagnostics.json",
+        "generations.txt",
+    ]
+    for optional in ("model-2bit.pt", "packed-export.json"):
+        if (run_dir / optional).is_file():
+            names.append(optional)
+    declarations = [
+        f"{hashlib.sha256((run_dir / name).read_bytes()).hexdigest()}  {name}"
+        for name in names
+    ]
+    (run_dir / "SHA256SUMS").write_text("\n".join(declarations) + "\n")
+
+
 def test_artifact_manifest_is_deterministic_and_validates_checksum(
     tmp_path: Path,
 ) -> None:
@@ -46,6 +65,34 @@ def test_artifact_manifest_rejects_tampered_checkpoint(tmp_path: Path) -> None:
     (run_dir / "checkpoint.pt").write_bytes(b"tampered")
 
     with pytest.raises(ArtifactValidationError, match="does not match"):
+        build_run_manifest(run_dir)
+
+
+def test_artifact_manifest_can_require_complete_checksums(tmp_path: Path) -> None:
+    run_dir = tmp_path / "strict-run"
+    _write_completed_run(run_dir)
+
+    with pytest.raises(
+        ArtifactValidationError,
+        match="missing required artifacts",
+    ):
+        build_run_manifest(run_dir, require_complete_checksums=True)
+
+    _write_complete_checksums(run_dir)
+    manifest = build_run_manifest(run_dir, require_complete_checksums=True)
+
+    assert "SHA256SUMS" in manifest["files"]
+
+
+def test_artifact_manifest_verifies_declared_non_checkpoint_hash(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "strict-run"
+    _write_completed_run(run_dir)
+    _write_complete_checksums(run_dir)
+    (run_dir / "generations.txt").write_text("tampered generation\n")
+
+    with pytest.raises(ArtifactValidationError, match="generations.txt.*does not match"):
         build_run_manifest(run_dir)
 
 
