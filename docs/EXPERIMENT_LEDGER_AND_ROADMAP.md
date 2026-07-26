@@ -450,7 +450,7 @@ all four probability codes `[0, 1, 2, 3]`. The sweep still allows the data to
 reject that theoretical advantage if a different clip produces lower loss.
 
 The longer clip-3 control is still running. Its matched validation trajectory
-through step 20,000 is:
+through step 22,000 is:
 
 | Step | Validation loss | Perplexity | Zero routes | Attention entropy | Residual NMSE |
 |---:|---:|---:|---:|---:|---:|
@@ -463,18 +463,20 @@ through step 20,000 is:
 | 14,000 | 2.256556 | 9.5501 | 87.51% | 1.8916 | 0.02187 |
 | 16,000 | 2.280490 | 9.7815 | 87.75% | 1.8672 | 0.02219 |
 | 18,000 | 2.292726 | 9.9019 | 87.96% | 1.8620 | 0.02274 |
-| 20,000 | 2.295187 | 9.9263 | **88.15%** | **1.8451** | **0.02287** |
+| 20,000 | 2.295187 | 9.9263 | 88.15% | 1.8451 | 0.02287 |
+| 22,000 | 2.284187 | 9.8177 | **88.21%** | **1.8340** | **0.02319** |
 
 The last 2,000 steps recovered only 0.000397 loss while route sparsity and
 residual error continued to rise; the following three 2,000-step intervals then
 regressed by 0.006134, 0.023934, and 0.012236 loss, followed by a smaller
-0.002461 regression at 20k. The current geometry has therefore reached a
-measured plateau and is moving materially backward. The
-control still must not be stopped early: completing its predeclared budget
-prevents an adaptive stopping decision from biasing the comparison. The rising
-zero-route fraction, falling entropy, and permanently unused probability code
-2 are concrete evidence for the predeclared clip sweep, not grounds to change
-the live control's settings.
+0.002461 regression at 20k. Step 22k recovered 0.011000, but remained 0.033766
+worse than the 12k minimum while route sparsity and residual error reached new
+highs. The current geometry has therefore reached a measured plateau followed
+by degradation and only partial recovery. The control still must not be
+stopped early: completing its predeclared budget prevents an adaptive stopping
+decision from biasing the comparison. The rising zero-route fraction, falling
+entropy, and permanently unused probability code 2 are concrete evidence for
+the predeclared clip sweep, not grounds to change the live control's settings.
 
 The running process was launched before best-checkpoint retention existed, so
 its periodic `checkpoint.pt` would have overwritten the step-10,000 state at
