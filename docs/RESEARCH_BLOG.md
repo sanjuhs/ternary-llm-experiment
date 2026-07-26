@@ -730,12 +730,17 @@ diverges. It supports our fixed-Hadamard arm, but it does not establish A2.
 
 [QuEST](https://arxiv.org/abs/2502.05003), published at ICML 2025, is the
 strongest direct evidence that very-low-bit **forward operands** can still be
-trained stably. It trains Llama-family models from 30M to 800M parameters with
+trained stably. Its revised study covers Llama-family models from 30M to 1.6B
+parameters with
 weights and activations from one to four bits. Its two transferable ideas are
 Hadamard normalization followed by MSE-optimal code fitting, and a “trust”
 gradient estimator that suppresses updates where forward quantization error
-makes the surrogate gradient unreliable. The paper's Pareto result favors W4A4,
-not W1A1, and “weights and activations” does not mean that Softmax,
+makes the surrogate gradient unreliable. Specifically, it masks a quantized
+entry's backward gradient when its absolute reconstruction error exceeds one
+quantization half-interval, and applies that mask in the Hadamard domain before
+the inverse transform. The backward multiplications themselves remain
+standard-precision. The paper's Pareto result favors W4A4, not W1A1, and
+“weights and activations” does not mean that Softmax,
 normalization, accumulation, requantization, and sampling are all ternary.
 Therefore it does not satisfy our strict endpoint by itself. It does motivate
 a matched next ablation: retain our ternary forward codebooks and add a
