@@ -74,8 +74,10 @@ own floating-point capacity control reaches the matched target.
 
 The new control has 27,402,752 learned parameters, width 512, eight layers,
 eight heads, context 256, and the same 4,096-token tokenizer as our experiment.
-It is scheduled for two full corpus passes. That isolates model capacity and
-training budget before introducing ternary weights.
+It is scheduled for a training-token budget equal to two corpus passes. Batches
+are sampled as random contiguous windows, so this is not a deterministic
+sequential epoch. That isolates model capacity and token budget before
+introducing ternary weights.
 
 ## The inference rule
 

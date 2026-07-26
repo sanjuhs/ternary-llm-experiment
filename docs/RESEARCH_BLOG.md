@@ -797,7 +797,9 @@ that a ternary-operand Transformer should be co-designed around its discrete
 forward path rather than obtained by mechanically rounding a conventional
 GELU Transformer.
 
-The next running control is a 27.4M-parameter float model trained over two full
-passes of the 488M-token corpus. That control is essential: quantization cannot
-be blamed for a target the float teacher itself never reached. It will be
-followed by matched ternary-weight and strict activation stages.
+The next running control is a 27.4M-parameter float model trained for a token
+budget equal to two passes over the 488M-token corpus. Training windows are
+sampled randomly, so “two-pass” is a budget label rather than a deterministic
+sequential epoch. That control is essential: quantization cannot be blamed for
+a target the float teacher itself never reached. It will be followed by matched
+ternary-weight and strict activation stages.
