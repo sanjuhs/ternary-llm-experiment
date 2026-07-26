@@ -834,6 +834,16 @@ are not claimed to be ternary activations, however. It supports a future
 architecture branch and custom-ASIC feasibility; it cannot be counted as a
 matched all-ternary autoregressive result.
 
+[TeLLMe](https://arxiv.org/abs/2504.16266) is a complementary autoregressive
+hardware result. It implements both prefill and decoding on an edge FPGA with
+ternary weights, lookup-based matrix processing, fused attention, and an
+integer-oriented normalization/quantization unit. Its persistent activations
+are eight-bit, however. TeLLMe therefore proves that ternary-weight generation
+can be engineered end to end on small hardware; it does not demonstrate our
+ternary-Q/K/V, two-bit-route, or ternary-residual contract. This distinction
+also explains why our wider integer accumulators and small fixed-point scales
+are hardware-realistic without making the stored activation tensors FP32.
+
 [From Attention to Activation](https://arxiv.org/abs/2410.17174) offers a
 training-time route rather than a post-training codebook. Across its GPT-2
 models, Softmax-1 and OrthoAdam keep unquantized perplexity essentially

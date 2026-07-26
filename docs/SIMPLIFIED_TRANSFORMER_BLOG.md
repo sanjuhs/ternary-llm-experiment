@@ -311,6 +311,7 @@ reading:
 | IntAttention | The attention pipeline stays integer, but uses eight-bit operands | Integer lookup-table softmax and integer normalization |
 | BinaryAttention | Q and K keep only their signs; the rest of the Transformer is not claimed fully ternary | Bitwise Q·K plus training that preserves sign-based similarity |
 | ELiTeFormer | Ternary linear projections with hybrid linear attention on an FPGA; the cache/state is compressed but not claimed ternary | A ternary hardware datapath and a possible alternative attention architecture |
+| TeLLMe | Ternary weights with eight-bit activations for both prompt processing and token generation on an edge FPGA | Proof that a complete ternary-weight autoregressive hardware pipeline is practical, but not that ternary activations preserve quality |
 | FTerViT | Ternary weights and normalization parameters; eight-bit activations; vision rather than language | A possible ternary normalization design |
 
 None of these papers has already built our exact machine. That is why our

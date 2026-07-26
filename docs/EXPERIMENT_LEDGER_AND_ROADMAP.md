@@ -625,6 +625,11 @@ Two positive hardware references still inform the implementation:
   projections and hybrid linear attention on an FPGA. Its cache compression
   and reported quality make it a future architecture branch, not a result for
   the current causal-softmax model or uniform ternary activations.
+- [TeLLMe](https://arxiv.org/abs/2504.16266) demonstrates prefill and
+  autoregressive decoding with ternary weights on an edge FPGA, including fused
+  attention and normalization/quantization hardware. Its activations are INT8,
+  so it validates the hardware dataflow but not our low-bit activation
+  endpoint.
 
 - [PackQViT](https://openreview.net/forum?id=N56hAiQvot) supports a fully
   four-bit vision path with integer-friendly nonlinear approximations. It
