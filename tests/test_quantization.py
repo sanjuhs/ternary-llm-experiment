@@ -204,6 +204,16 @@ def test_integer_rms_norm_integer_sqrt_is_exact_for_large_codes() -> None:
     assert torch.equal(codes[0], torch.tensor([0, 21845, -21845, 10923]))
 
 
+def test_integer_rms_norm_clamps_before_int64_square_overflow() -> None:
+    inputs = torch.full((2, 1024), 1e30)
+    weight = torch.ones(1024)
+
+    actual, codes = integer_rms_norm_reference(inputs, weight)
+
+    assert torch.isfinite(actual).all()
+    assert (codes > 0).all()
+
+
 def test_int2_attention_scores_use_four_codes_and_preserve_mask() -> None:
     scores = torch.tensor([[[[1.0, 0.0, -2.0], [2.0, 1.0, 0.0], [0.0, -1.0, -4.0]]]])
     valid = torch.ones(3, 3, dtype=torch.bool).tril()

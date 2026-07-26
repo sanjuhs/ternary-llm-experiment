@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 
 import torch
@@ -337,9 +338,12 @@ def integer_rms_norm_reference(
     # fixed-point conversion exactly throughout the normal activation range;
     # CPU and CUDA retain float64 before the integer boundary.
     conversion_dtype = torch.float32 if inputs.device.type == "mps" else torch.float64
-    input_codes = (inputs.detach().to(conversion_dtype) * input_multiplier).round()
-    input_codes = input_codes.clamp(-(1 << 31), (1 << 31) - 1).to(torch.int64)
     width = inputs.shape[-1]
+    input_codes = (inputs.detach().to(conversion_dtype) * input_multiplier).round()
+    maximum_safe_code = math.isqrt(((1 << 63) - 1) // width)
+    input_codes = input_codes.clamp(-maximum_safe_code, maximum_safe_code).to(
+        torch.int64
+    )
     sum_squares = (input_codes * input_codes).sum(dim=-1, keepdim=True)
     mean_square = (sum_squares + width // 2) // width
     epsilon_code = max(1, round(eps * input_multiplier * input_multiplier))
