@@ -777,14 +777,17 @@ Q/K/V alone retain language-model quality.
 [BinaryAttention](https://arxiv.org/abs/2603.09582), accepted at CVPR 2026,
 shows a more aggressive but narrower result: Q and K retain only their signs,
 so Q·K becomes a bitwise one-bit operation. Quantization-aware training,
-self-distillation, a learned score bias, and an explicit sign-alignment
-objective recover the lost similarity structure; the authors report more than
+self-distillation, and a learned score bias recover much of the lost
+similarity structure; the authors report more than
 2x the speed of FlashAttention2 on an A100 and matched or improved accuracy on
-their vision and diffusion benchmarks. Binary values are a subset of ternary
+their vision and diffusion benchmarks. The full method makes the precision
+boundary clearer: its attention coefficients and V use eight-bit integers, and
+its optional corrective bias may be a dense, position-sensitive, or
+context-aware higher-precision term. Binary values are a subset of ternary
 values, so this is a legitimate fallback for our Q/K operands. It does **not**
-establish ternary V, low-bit Route·V, low-bit residual boundaries, or
+establish ternary V, two-bit Route·V, low-bit residual boundaries, or
 autoregressive language-model loss. The transferable experiment is therefore
-a matched `binary Q/K + ternary V` arm with sign-aligned Q/K distillation—not a
+a matched `binary Q/K + ternary V` arm with Q/K relational distillation—not a
 claim that the paper has solved our whole inference graph.
 
 That fallback is now implemented as
@@ -799,6 +802,16 @@ A two-step integration smoke has already exercised the complete checkpoint,
 teacher-distillation, backward, validation, diagnostic, and serialization
 path. It confirmed exact binary Q/K alphabets and ternary V; its random-data
 loss is not a quality measurement.
+
+We deliberately omit BinaryAttention's optional dense/context bias: an
+unbounded floating bias matrix would be a hidden bypass around the low-bit
+score path. Our dynamic-scale reference uses per-vector magnitude alignment;
+the stricter queued path instead learns one positive scale per head so the
+scale can be applied outside the binary dot product. This is a contract-driven
+adaptation of the paper, not an exact reproduction. In particular, our
+explicit Q/K-similarity loss comes from the already implemented Q-ViT-style
+distillation path; BinaryAttention reports ordinary teacher self-distillation
+and observes sign-aligned similarity rather than defining that same loss.
 
 [ELiTeFormer](https://arxiv.org/abs/2607.03652) is the closest July 2026
 hardware proof: it combines hybrid linear attention, ternary linear

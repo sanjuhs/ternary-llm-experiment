@@ -331,10 +331,11 @@ BinaryAttention offers another useful card trick. It throws away Q and K
 magnitudes and keeps only plus or minus, then teaches those signs to preserve
 the teacher's similarity pattern. That makes Q·K especially cheap, and binary
 is a valid subset of what a ternary chip can process. But the paper tested
-vision and diffusion models and did not make V, attention routing, or the
-residual stream ternary. We will treat it as a fallback Q/K recipe if our
-current ternary-QKV attention refinements fail, not as proof that the complete
-machine is solved.
+vision and diffusion models, used eight-bit values and eight-bit routing for
+the second attention calculation, and allowed an optional richer bias. We
+keep the Q/K trick but reject that higher-precision escape hatch: our fallback
+still uses ternary V and two-bit routing. It remains an experiment, not proof
+that the complete machine is solved.
 
 One training idea looks especially useful. Ordinary Transformers sometimes
 create a few enormous internal numbers. Compressing them is like drawing both a

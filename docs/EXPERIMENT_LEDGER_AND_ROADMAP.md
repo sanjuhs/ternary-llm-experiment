@@ -406,14 +406,15 @@ TinyStories decoder and are now implemented as an ablation.
 
 [BinaryAttention](https://arxiv.org/abs/2603.09582), accepted at CVPR 2026,
 reduces Q and K to their signs and executes Q·K with bitwise operations. Its
-QAT, self-distillation, learned score bias, and sign-alignment loss recover
-quality on vision and diffusion Transformers, with a reported speed above 2x
+QAT, self-distillation, and learned score bias recover quality on vision and
+diffusion Transformers, with a reported speed above 2x
 FlashAttention2 on A100. This is direct evidence that a binary-Q/K branch can
 preserve useful similarity geometry. It is not evidence for ternary V,
-Route·V, residual boundaries, or causal language modeling. If the current
+Route·V, residual boundaries, or causal language modeling: the paper actually
+uses eight-bit attention coefficients and eight-bit V. If the current
 ternary-QKV clip and shared-scale arms cannot close the attention gap, the
 predeclared next fallback is a matched binary-Q/K, ternary-V arm using
-sign-aligned Q/K distillation. Binary operands remain valid ternary-hardware
+Q/K relational distillation. Binary operands remain valid ternary-hardware
 operands because they use the strict subset `{-1, +1}`.
 
 The fallback is implemented as `binary_qk_ternary_v`, including dynamic and
@@ -421,7 +422,9 @@ learned-head-scale paths, diagnostic alphabet checks, deployment-contract
 support, and a matched remote experiment. After the four primary refinements,
 the selected endpoint seeds a 4,000-step ternary-QKV control and a 4,000-step
 binary-Q/K arm. Both use the same Q/K-similarity distillation objective; only
-the Q/K alphabet differs.
+the Q/K alphabet differs. The strict arm omits the paper's optional
+dense/context bias because it would create a higher-precision bypass around
+our low-bit score representation.
 
 A two-step end-to-end integration smoke has also passed through initialization
 from a checkpoint, teacher capture, logit/attention/QK/hidden distillation,
