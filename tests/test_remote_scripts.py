@@ -93,3 +93,11 @@ def test_refinement_pipeline_waits_then_runs_declared_order() -> None:
     assert offsets == sorted(offsets)
     assert "REFINEMENT_PIPELINE_FAILED" in source
     assert "REFINEMENT_PIPELINE_SUCCESS" in source
+
+
+def test_shared_scale_stage_compares_screen_with_refinement_best() -> None:
+    source = _read("remote_shared_qkv_scale_refinement.sh")
+    assert "source-candidate-screen.json" in source
+    assert "source-candidate-refined-best.json" in source
+    assert "source-selection.json" in source
+    assert '"selected_candidate": winner' in source

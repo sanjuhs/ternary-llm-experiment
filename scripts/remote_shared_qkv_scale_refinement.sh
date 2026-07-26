@@ -29,16 +29,81 @@ fi
 
 selected_clip="$(jq -r '.selected_clip' "${clip_experiment}/selection.json")"
 source_run="${base}/attention-clip-selected-${selected_clip}-refine"
+screen_checkpoint="${base}/attention-clip-${selected_clip}-screen/checkpoint.pt"
 if [[ -s "${source_run}/best-checkpoint.pt" ]]; then
-  source_checkpoint="${source_run}/best-checkpoint.pt"
+  refined_checkpoint="${source_run}/best-checkpoint.pt"
 elif [[ -s "${source_run}/checkpoint.pt" ]]; then
-  source_checkpoint="${source_run}/checkpoint.pt"
+  refined_checkpoint="${source_run}/checkpoint.pt"
 else
   echo "selected clip-refinement checkpoint is missing" >&2
   exit 1
 fi
+if [[ ! -s "${screen_checkpoint}" ]]; then
+  echo "selected clip-screen checkpoint is missing" >&2
+  exit 1
+fi
 
 mkdir -p "${experiment}"
+
+# Best-checkpoint retention starts at the first training validation, so it
+# cannot automatically retain a better step-0 initialization. Re-evaluate the
+# screen winner and the refinement's saved best on identical batches before
+# handing a checkpoint to the next stage. The fixed-budget refinement remains
+# untouched and is still reported as the attention-stage endpoint.
+uv run ternary-evaluate \
+  --config "${config}" \
+  --checkpoint "${screen_checkpoint}" \
+  --device cuda \
+  --batches 200 \
+  --attention-clip "${selected_clip}" \
+  > "${experiment}/source-candidate-screen.json"
+
+uv run ternary-evaluate \
+  --config "${config}" \
+  --checkpoint "${refined_checkpoint}" \
+  --device cuda \
+  --batches 200 \
+  --attention-clip "${selected_clip}" \
+  > "${experiment}/source-candidate-refined-best.json"
+
+source_checkpoint="$(
+  /opt/ternary-llm-venv/bin/python - \
+    "${experiment}" "${screen_checkpoint}" "${refined_checkpoint}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+candidates = {
+    "screen": {
+        "checkpoint": sys.argv[2],
+        "loss": json.loads(
+            (root / "source-candidate-screen.json").read_text()
+        )["loss"],
+    },
+    "refined_best": {
+        "checkpoint": sys.argv[3],
+        "loss": json.loads(
+            (root / "source-candidate-refined-best.json").read_text()
+        )["loss"],
+    },
+}
+winner = min(candidates, key=lambda name: candidates[name]["loss"])
+(root / "source-selection.json").write_text(
+    json.dumps(
+        {
+            "selection_metric": "matched 200-batch validation loss",
+            "candidates": candidates,
+            "selected_candidate": winner,
+            "selected_checkpoint": candidates[winner]["checkpoint"],
+        },
+        indent=2,
+    )
+    + "\n"
+)
+print(candidates[winner]["checkpoint"])
+PY
+)"
 printf '%s\n' "${source_checkpoint}" > "${experiment}/source-checkpoint.txt"
 
 uv run ternary-evaluate \
