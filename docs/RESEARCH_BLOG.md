@@ -1024,6 +1024,18 @@ evaluates a longer refinement of the winner.
 It is a targeted test of codebook utilization, not an after-the-fact change to
 the already-running clip-3 baseline.
 
+That screen is now measured. On the same 200 validation batches, clip 1.5
+improved from 4.392865 to 3.207251 after 2,000 QAT steps but made the zero code
+completely unreachable. Clip 2.5 improved from 2.336622 to 2.227716, yet code 2
+remained unused. Clip 2.0 improved from 2.254187 to **2.226880**, beating the
+mature clip-3 control at 2.251191 and the clip-2.5 arm by 0.000836. Its route
+distribution retains 84.95% zeros while assigning 4.74% to code 2, so all four
+probability codes are active. This is the first measured attention refinement
+that improves bounded loss without replacing one collapsed alphabet with
+another. The predeclared 5,000-step clip-2.0 refinement has started; the claim
+remains provisional until its exhaustive sequential validation, diagnostics,
+generations, export, and artifact audit finish.
+
 Together, these papers suggest two honest follow-ups. For exact two-bit storage,
 improve the two binary planes with block reconstruction, groupwise fixed-point
 scales, and layer sensitivity training. For quality with ternary operators,

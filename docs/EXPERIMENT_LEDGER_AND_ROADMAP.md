@@ -449,6 +449,23 @@ Clip 2 has a specific representational advantage: its ideal LUT ratios reach
 all four probability codes `[0, 1, 2, 3]`. The sweep still allows the data to
 reject that theoretical advantage if a different clip produces lower loss.
 
+The matched 200-batch screen selected clip 2.0:
+
+| Clip | Loss before QAT | Loss after 2k QAT | Zero routes after QAT | Code 2 after QAT | Entropy after QAT |
+|---:|---:|---:|---:|---:|---:|
+| 1.5 | 4.392865 | 3.207251 | 0.00% | 4.11% | 4.5248 |
+| **2.0** | 2.254187 | **2.226880** | 84.95% | **4.74%** | 2.1445 |
+| 2.5 | 2.336622 | 2.227716 | 80.99% | 0.00% | 2.3781 |
+| 3.0 mature control | **2.251191** | — | 86.29% | 0.00% | 1.9835 |
+
+Clip 1.5 overcorrected: it made code 0 unreachable and remained much worse
+even after adapting. Clips 2.0 and 2.5 finished only 0.000836 loss apart, but
+2.0 was lower and uniquely retained selective zero routing while exercising
+all four probability codes. It also beat the mature clip-3 bounded control by
+0.024311 loss. The predeclared 5,000-step clip-2.0 refinement is now running
+from its saved 2,000-step checkpoint; only its exhaustive sequential result
+will become the stage endpoint.
+
 The longer clip-3 control completed its predeclared training budget. Its
 matched validation trajectory through step 30,000 is:
 
