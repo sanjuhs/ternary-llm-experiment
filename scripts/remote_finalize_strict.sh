@@ -6,14 +6,18 @@ export UV_PROJECT_ENVIRONMENT=/opt/ternary-llm-venv
 export UV_LINK_MODE=copy
 
 run_dir="artifacts/tinystories-28m/hadamard-ternary-p3-half-pass"
+preserved_checkpoint="${run_dir}/checkpoint-step-10000.pt"
+preserved_run="artifacts/tinystories-28m/hadamard-ternary-p3-step-10000-preserved"
 
-if [[ -s "${run_dir}/SUCCESS" ]]; then
+if [[ -s "${run_dir}/SUCCESS" && -s "${preserved_run}/SUCCESS" ]]; then
   echo "strict run is already finalized: ${run_dir}/SUCCESS"
+  echo "preserved run is already finalized: ${preserved_run}/SUCCESS"
   exit 0
 fi
 
 for required in \
   checkpoint.pt \
+  checkpoint-step-10000.pt \
   resolved-config.json \
   metrics.jsonl \
   full-validation.json \
@@ -26,9 +30,7 @@ do
   fi
 done
 
-preserved_checkpoint="${run_dir}/checkpoint-step-10000.pt"
-preserved_run="artifacts/tinystories-28m/hadamard-ternary-p3-step-10000-preserved"
-if [[ -s "${preserved_checkpoint}" && ! -s "${preserved_run}/SUCCESS" ]]; then
+if [[ ! -s "${preserved_run}/SUCCESS" ]]; then
   mkdir -p "${preserved_run}"
   cp --reflink=auto "${preserved_checkpoint}" "${preserved_run}/checkpoint.pt"
   cp "${run_dir}/resolved-config.json" "${preserved_run}/resolved-config.json"

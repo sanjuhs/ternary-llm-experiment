@@ -8,6 +8,10 @@ export UV_LINK_MODE=copy
 config="configs/tinystories_28m.toml"
 base="artifacts/tinystories-28m"
 strict_run="${base}/hadamard-ternary-p3-half-pass"
+if [[ ! -s "${strict_run}/SUCCESS" ]]; then
+  echo "strict run must be finalized before attention clip refinement" >&2
+  exit 1
+fi
 if [[ -s "${strict_run}/best-checkpoint.pt" ]]; then
   source_checkpoint="${strict_run}/best-checkpoint.pt"
 elif [[ -s "${strict_run}/checkpoint-step-10000.pt" ]]; then
