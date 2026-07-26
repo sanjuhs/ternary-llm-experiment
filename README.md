@@ -46,8 +46,8 @@ The strict residual-curriculum outputs are preserved in
   fixed-Hadamard mixing, and layer-specific plane allocation;
 - teacher/student logit, attention-map, and sampled Q-Q/K-K relation
   distillation;
-- exact reference linear and attention Q·K paths with binary/ternary code
-  operands and INT32 accumulators;
+- exact reference linear, attention Q·K, and two-plane Route·V paths with
+  binary/ternary code operands and INT32 accumulators;
 - straight-through ternary fake quantization with per-row weight and per-token
   activation scales;
 - training, validation, checkpoint/resume, and text generation;

@@ -379,6 +379,53 @@ def ternary_qk_attention_reference(
     return scores, accumulators
 
 
+def int2_route_ternary_value_reference(
+    probability_codes: Tensor,
+    values: Tensor,
+    value_scale: Tensor,
+    *,
+    threshold: float = 0.5,
+    eps: float = 1e-5,
+) -> tuple[Tensor, Tensor]:
+    """Compute Route·V from two binary route planes and ternary V codes.
+
+    This reference requires a value scale broadcastable across the key-token
+    dimension, as in the learned head-shared scale experiment. Two-bit route
+    codes are decomposed into low/high binary planes, so both large matmuls use
+    binary-by-ternary operands and INT32 accumulators.
+    """
+    if probability_codes.ndim < 2 or values.ndim < 2:
+        raise ValueError("probability codes and values need at least two dimensions")
+    if probability_codes.shape[:-2] != values.shape[:-2]:
+        raise ValueError("probability codes and values must share prefix dimensions")
+    if probability_codes.shape[-1] != values.shape[-2]:
+        raise ValueError("route key length must equal the value sequence length")
+    detached_codes = probability_codes.detach()
+    if not torch.equal(detached_codes, detached_codes.round()):
+        raise ValueError("probability codes must be integers")
+    if detached_codes.numel() and (
+        detached_codes.min().item() < 0 or detached_codes.max().item() > 3
+    ):
+        raise ValueError("probability codes must be in [0, 3]")
+
+    positive_scale = value_scale.detach().clamp_min(eps)
+    value_codes = ternary_code(
+        values.detach() / positive_scale,
+        threshold,
+    ).to(torch.int32)
+    route_codes = detached_codes.to(torch.int32)
+    low_plane = torch.bitwise_and(route_codes, 1)
+    high_plane = torch.bitwise_and(torch.bitwise_right_shift(route_codes, 1), 1)
+    low_accumulator = low_plane @ value_codes
+    high_accumulator = high_plane @ value_codes
+    accumulators = torch.stack((low_accumulator, high_accumulator), dim=-1)
+    combined = low_accumulator + torch.bitwise_left_shift(high_accumulator, 1)
+    denominator = route_codes.sum(dim=-1, keepdim=True).clamp_min(1)
+    output = combined.to(values.dtype) / denominator.to(values.dtype)
+    output = output * positive_scale.to(values.dtype)
+    return output, accumulators
+
+
 def quantize_activation_a4(tensor: Tensor, eps: float = 1e-5) -> Tensor:
     """Per-vector asymmetric fake quantization to 16 activation levels."""
     minimum = tensor.detach().amin(dim=-1, keepdim=True)

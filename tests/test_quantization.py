@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from ternary_llm.quantization import (
+    int2_route_ternary_value_reference,
     integer_softmax_from_int2_codes,
     population_ternary_codes,
     progressive_activation_codes,
@@ -262,3 +263,24 @@ def test_learned_scale_ternarization_updates_shadow_and_scale() -> None:
     quantized.square().sum().backward()
     assert values.grad is not None and torch.isfinite(values.grad).all()
     assert log_scale.grad is not None and log_scale.grad.abs().item() > 0
+
+
+def test_int2_route_ternary_value_reference_matches_reconstruction() -> None:
+    torch.manual_seed(23)
+    route_codes = torch.randint(0, 4, (2, 3, 4, 5), dtype=torch.float32)
+    route_codes[..., -1] = 3
+    values = torch.randn(2, 3, 5, 8)
+    value_scale = torch.full((1, 3, 1, 1), 0.5)
+    value_codes = ternary_code(values / value_scale)
+    probabilities = route_codes / route_codes.sum(dim=-1, keepdim=True)
+    expected = probabilities @ (value_codes * value_scale)
+
+    output, accumulators = int2_route_ternary_value_reference(
+        route_codes,
+        values,
+        value_scale,
+    )
+
+    assert accumulators.dtype == torch.int32
+    assert accumulators.shape == (2, 3, 4, 8, 2)
+    assert torch.allclose(output, expected, atol=1e-6, rtol=1e-6)

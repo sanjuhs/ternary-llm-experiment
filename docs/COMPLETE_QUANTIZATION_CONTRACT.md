@@ -36,6 +36,13 @@ large tensors remain ternary codes; Q·K and Route·V use the packed codes, and
 the corresponding scale products can be applied after accumulation. This is an
 opt-in experiment and does not alter the running per-token-scale baseline.
 
+An exact Route·V arithmetic reference accompanies it. Each `{0,1,2,3}` route
+code is split into low and high binary planes. Both planes multiply ternary V
+codes into INT32 accumulators; the high-plane result is shifted once, the two
+planes are added, the integer route-count denominator is applied, and the one
+shared V scale reconstructs the output. Tests compare this result with the
+explicit reconstructed tensors.
+
 ## What cannot literally stay in two bits
 
 Dot products sum hundreds of products. Softmax also sums a row of exponentials.
