@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11,<3.14"
 dependencies = [
     "datasets>=3.2,<5",
+    "huggingface-hub>=0.29,<2",
     "numpy>=2.0,<3",
     "tokenizers>=0.20,<1",
     "torch>=2.8,<2.9",
@@ -33,6 +34,7 @@ ternary-triton-benchmark = "ternary_llm.packed_triton:main"
 ternary-export = "ternary_llm.export:main"
 ternary-calibrate-projection = "ternary_llm.calibrate_projection:main"
 ternary-audit-artifacts = "ternary_llm.artifacts:main"
+ternary-publish-hf = "ternary_llm.publish_hf:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -138,7 +138,7 @@ for prompt in \
 do
   uv run ternary-generate \
     --checkpoint "${run_dir}/checkpoint.pt" \
-    --tokenizer data/processed/tokenizer.json \
+    --tokenizer data/full/tokenizer.json \
     --prompt "${prompt}" \
     --max-new-tokens 120 \
     --temperature 0.8 \

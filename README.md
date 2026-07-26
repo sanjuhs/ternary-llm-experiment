@@ -74,6 +74,17 @@ not claim a speedup without a fused device kernel.
 Generated data and checkpoints remain ignored by Git; the public Hub repositories
 hold the experiment checkpoints and reproducible token streams.
 
+Completed run directories can be audited, uploaded, and remotely enumerated in
+one command. The command writes a deterministic `artifact-manifest.json` before
+uploading and fails if any local file is absent from the resulting Hub commit:
+
+```bash
+uv run ternary-publish-hf \
+  artifacts/tinystories-28m/ternary-weights-one-pass \
+  --path-in-repo tinystories-28m/ternary-weights-one-pass \
+  --ipv4-only
+```
+
 ## Setup
 
 `uv` manages the Python interpreter and virtual environment:
