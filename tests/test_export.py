@@ -79,7 +79,7 @@ def test_inference_contract_distinguishes_operands_from_end_to_end_runtime() -> 
 
     assert contract["ternary_operand_contract"]["satisfied"]
     assert not contract["end_to_end_integer_reference"]["satisfied"]
-    assert "RMSNorm reciprocal-square-root and scale application" in (
+    assert "integer RMSNorm reference is not wired into the model runtime" in (
         contract["end_to_end_integer_reference"]["remaining_boundaries"]
     )
 

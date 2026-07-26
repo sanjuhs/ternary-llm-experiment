@@ -84,12 +84,15 @@ bits, width-256 linear reductions about ten, and width-1,024 feed-forward
 reductions about twelve. INT32 is a convenient implementation container, not the
 minimum ASIC width.
 
-The present end-to-end PyTorch path is still not a fused integer runtime.
-RMSNorm's reciprocal square root, scale/requantization arithmetic, and the final
-token-sampling softmax remain explicit deployment boundaries. The export says
-so. ReLU removes GELU if its matched quality permits; a fixed-point RMSNorm or
-TernaryLayerNorm implementation remains necessary before claiming every
-nonlinear Transformer operation has an integer hardware reference.
+The present end-to-end PyTorch path is still not a fused integer runtime. A
+portable RMSNorm reference now quantizes its input to fixed-point codes,
+accumulates squares in INT64, uses an exact integer square root and division,
+and applies ternary normalization weights. Tests compare it with the
+fake-quantized result. It is not yet wired through the complete model.
+Scale/requantization arithmetic and the final token-sampling softmax also remain
+explicit deployment boundaries. ReLU removes GELU if its matched quality
+permits; integration of integer RMSNorm remains necessary before claiming
+every nonlinear Transformer operation uses the deployment reference.
 
 ## Matched attention experiment
 

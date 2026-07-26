@@ -168,7 +168,7 @@ def inference_contract(config: dict[str, Any]) -> dict[str, Any]:
         "end_to_end_integer_reference": {
             "satisfied": False,
             "remaining_boundaries": [
-                "RMSNorm reciprocal-square-root and scale application",
+                "integer RMSNorm reference is not wired into the model runtime",
                 "requantization scale arithmetic in the PyTorch quality path",
                 "final token-sampling softmax",
             ],

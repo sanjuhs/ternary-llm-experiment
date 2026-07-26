@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 
 import torch
@@ -280,6 +281,77 @@ def residual_plane_ternary_linear_reference(
     output = output.reshape(*inputs.shape[:-1], output_features)
     accumulator_shape = (*inputs.shape[:-1], output_features, planes)
     return output, integer_accumulators.reshape(accumulator_shape)
+
+
+def _integer_sqrt_tensor(values: Tensor) -> Tensor:
+    """Portable exact integer square root for a correctness reference."""
+    if values.dtype != torch.int64:
+        raise ValueError("integer square root expects int64 values")
+    if bool(torch.any(values < 0)):
+        raise ValueError("integer square root expects non-negative values")
+    original_device = values.device
+    roots = [math.isqrt(int(value)) for value in values.detach().cpu().reshape(-1)]
+    return torch.tensor(roots, dtype=torch.int64, device=original_device).reshape(
+        values.shape
+    )
+
+
+def integer_rms_norm_reference(
+    inputs: Tensor,
+    weight: Tensor,
+    *,
+    input_fraction_bits: int = 14,
+    output_fraction_bits: int = 14,
+    weight_threshold: float = 0.5,
+    eps: float = 1e-5,
+) -> tuple[Tensor, Tensor]:
+    """Apply RMSNorm with integer reductions and a ternary weight operand.
+
+    The portable implementation quantizes the incoming boundary to signed
+    fixed-point integers, accumulates squares in INT64, uses an exact integer
+    square root and integer division, and applies ternary normalization-weight
+    codes. The small per-vector and per-weight scales are reconstructed only
+    after the integer elementwise work. It is a correctness reference rather
+    than a fused kernel.
+    """
+    if inputs.ndim < 1:
+        raise ValueError("inputs must have at least one dimension")
+    if weight.ndim != 1 or weight.shape[0] != inputs.shape[-1]:
+        raise ValueError("weight must be a vector matching the input width")
+    if not 1 <= input_fraction_bits <= 20:
+        raise ValueError("input_fraction_bits must be between 1 and 20")
+    if not 1 <= output_fraction_bits <= 20:
+        raise ValueError("output_fraction_bits must be between 1 and 20")
+    if eps <= 0:
+        raise ValueError("eps must be positive")
+
+    input_multiplier = 1 << input_fraction_bits
+    input_codes = (inputs.detach().to(torch.float64) * input_multiplier).round()
+    input_codes = input_codes.clamp(-(1 << 31), (1 << 31) - 1).to(torch.int64)
+    width = inputs.shape[-1]
+    sum_squares = (input_codes * input_codes).sum(dim=-1, keepdim=True)
+    mean_square = (sum_squares + width // 2) // width
+    epsilon_code = max(1, round(eps * input_multiplier * input_multiplier))
+    rms_codes = _integer_sqrt_tensor(mean_square + epsilon_code).clamp_min(1)
+
+    output_multiplier = 1 << output_fraction_bits
+    numerator = input_codes * output_multiplier
+    half_denominator = rms_codes // 2
+    normalized_codes = torch.where(
+        numerator >= 0,
+        (numerator + half_denominator) // rms_codes,
+        -((-numerator + half_denominator) // rms_codes),
+    )
+
+    weight_scale = _scale(weight, 0, eps=eps)
+    weight_codes = ternary_code(
+        weight.detach() / weight_scale,
+        weight_threshold,
+    ).to(torch.int64)
+    weighted_codes = normalized_codes * weight_codes
+    output = weighted_codes.to(inputs.dtype) / output_multiplier
+    output = output * weight_scale.to(device=inputs.device, dtype=inputs.dtype)
+    return output, normalized_codes.to(torch.int32)
 
 
 def progressive_activation_codes(

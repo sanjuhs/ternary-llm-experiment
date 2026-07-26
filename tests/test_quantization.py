@@ -3,6 +3,7 @@ import torch
 
 from ternary_llm.quantization import (
     int2_route_ternary_value_reference,
+    integer_rms_norm_reference,
     integer_softmax_from_int2_codes,
     population_ternary_codes,
     progressive_activation_codes,
@@ -18,6 +19,7 @@ from ternary_llm.quantization import (
     ternarize,
     ternarize_activation,
     ternarize_activation_with_learned_scale,
+    ternarize_weight,
     ternary_activation_codes,
     ternary_code,
     ternary_qk_attention_reference,
@@ -156,6 +158,31 @@ def test_residual_plane_linear_matches_reconstructed_reference(binary: bool) -> 
     assert accumulators.dtype == torch.int32
     assert accumulators.shape == (2, 3, 5, planes)
     assert torch.allclose(output, expected, atol=1e-5, rtol=1e-5)
+
+
+def test_integer_rms_norm_matches_ternary_weight_reference() -> None:
+    generator = torch.Generator().manual_seed(41)
+    inputs = torch.randn(2, 3, 64, generator=generator)
+    weight = torch.randn(64, generator=generator)
+
+    actual, normalized_codes = integer_rms_norm_reference(
+        inputs,
+        weight,
+        input_fraction_bits=16,
+        output_fraction_bits=16,
+    )
+    expected = inputs * torch.rsqrt(
+        inputs.square().mean(dim=-1, keepdim=True) + 1e-5
+    )
+    expected = expected * ternarize_weight(weight)
+
+    assert normalized_codes.dtype == torch.int32
+    assert torch.allclose(actual, expected, atol=2e-4, rtol=2e-4)
+
+
+def test_integer_rms_norm_rejects_mismatched_weight() -> None:
+    with pytest.raises(ValueError, match="matching the input width"):
+        integer_rms_norm_reference(torch.ones(2, 4), torch.ones(3))
 
 
 def test_int2_attention_scores_use_four_codes_and_preserve_mask() -> None:
