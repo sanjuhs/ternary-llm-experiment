@@ -421,7 +421,7 @@ all four probability codes `[0, 1, 2, 3]`. The sweep still allows the data to
 reject that theoretical advantage if a different clip produces lower loss.
 
 The longer clip-3 control is still running. Its matched validation trajectory
-through step 14,000 is:
+through step 16,000 is:
 
 | Step | Validation loss | Perplexity | Zero routes | Attention entropy | Residual NMSE |
 |---:|---:|---:|---:|---:|---:|
@@ -431,16 +431,18 @@ through step 14,000 is:
 | 8,000 | 2.268195 | 9.6619 | 85.77% | 2.0259 | 0.01899 |
 | 10,000 | 2.250819 | 9.4955 | 86.25% | 1.9860 | 0.01992 |
 | 12,000 | **2.250422** | **9.4917** | 87.24% | 1.9178 | 0.02102 |
-| 14,000 | 2.256556 | 9.5501 | **87.51%** | **1.8916** | **0.02187** |
+| 14,000 | 2.256556 | 9.5501 | 87.51% | 1.8916 | 0.02187 |
+| 16,000 | 2.280490 | 9.7815 | **87.75%** | **1.8672** | **0.02219** |
 
 The last 2,000 steps recovered only 0.000397 loss while route sparsity and
-residual error continued to rise; the following 2,000 steps then regressed by
-0.006134 loss. The current geometry has therefore reached a measured plateau
-and begun to move backward. The control still must not be stopped early:
-completing its predeclared budget prevents an adaptive stopping decision from
-biasing the comparison. The rising zero-route fraction, falling entropy, and
-permanently unused probability code 2 are concrete evidence for the
-predeclared clip sweep, not grounds to change the live control's settings.
+residual error continued to rise; the following two 2,000-step intervals then
+regressed by 0.006134 and 0.023934 loss. The current geometry has therefore
+reached a measured plateau and is now moving materially backward. The control
+still must not be stopped early: completing its predeclared budget prevents an
+adaptive stopping decision from biasing the comparison. The rising zero-route
+fraction, falling entropy, and permanently unused probability code 2 are
+concrete evidence for the predeclared clip sweep, not grounds to change the
+live control's settings.
 
 The running process was launched before best-checkpoint retention existed, so
 its periodic `checkpoint.pt` would have overwritten the step-10,000 state at
