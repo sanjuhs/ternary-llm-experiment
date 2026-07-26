@@ -36,6 +36,7 @@ ternary-calibrate-projection = "ternary_llm.calibrate_projection:main"
 ternary-audit-artifacts = "ternary_llm.artifacts:main"
 ternary-publish-hf = "ternary_llm.publish_hf:main"
 ternary-overnight-summary = "ternary_llm.overnight_summary:main"
+ternary-completion-audit = "ternary_llm.completion_audit:main"
 
 [build-system]
 requires = ["hatchling"]

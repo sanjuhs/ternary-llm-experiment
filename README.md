@@ -97,7 +97,19 @@ uv run ternary-publish-hf \
   artifacts/tinystories-28m/integer-rmsnorm-screen \
   --metadata-folder \
   --path-in-repo tinystories-28m/experiments/integer-rmsnorm-screen \
+  --receipt artifacts/tinystories-28m/publication-receipts/metadata--integer-rmsnorm-screen.json \
   --ipv4-only
+```
+
+After every run and metadata folder has an external receipt, the final
+completion audit rebuilds the fail-closed experiment summary, checks that no
+local file changed after publication, and requires unique verified Hub paths:
+
+```bash
+uv run ternary-completion-audit \
+  artifacts/tinystories-28m \
+  artifacts/tinystories-28m/publication-receipts \
+  --output artifacts/tinystories-28m/completion-audit/audit.json
 ```
 
 ## Setup

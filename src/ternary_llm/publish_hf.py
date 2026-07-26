@@ -261,6 +261,11 @@ def main() -> None:
             "claiming checkpoint-run audit semantics"
         ),
     )
+    parser.add_argument(
+        "--receipt",
+        type=Path,
+        help="write the verified publication result to this external JSON file",
+    )
     args = parser.parse_args()
 
     path_in_repo = args.path_in_repo or args.run_dir.name
@@ -274,7 +279,11 @@ def main() -> None:
         commit_message=commit_message,
         ipv4_only=args.ipv4_only,
     )
-    print(json.dumps(result, indent=2, sort_keys=True))
+    rendered = json.dumps(result, indent=2, sort_keys=True) + "\n"
+    if args.receipt:
+        args.receipt.parent.mkdir(parents=True, exist_ok=True)
+        args.receipt.write_text(rendered, encoding="utf-8")
+    print(rendered, end="")
 
 
 if __name__ == "__main__":
