@@ -490,6 +490,25 @@ remains preserved as the new exhaustive strict record. Its run and comparison
 metadata are independently checksum- and remote-integrity-verified on Hugging
 Face.
 
+The matched QKV-scale stage is now complete:
+
+| Scale route | 200-batch loss after 4k QAT | Exhaustive loss | Perplexity |
+|---|---:|---:|---:|
+| Dynamic per-token control | **2.241261** | **2.230903** | **9.3083** |
+| Learned factorizable per-head scale | 2.321006 | 2.309650 | 10.0709 |
+
+The learned per-head arm is stable and uses all four attention codes, but costs
+0.078748 exhaustive loss relative to its matched control. The control is a new
+best exhaustive code-constrained result, improving the 2.235370 clip-refinement
+endpoint by 0.004467. It is not the hardware endpoint: its dynamic token scales
+make the exported ternary-operand contract fail. The next-stage three-way guard
+also re-evaluated the untouched input and both retained-best checkpoints on the
+same 200 batches. It selected the untouched clip-2 source at **2.226880** over
+the token arm at **2.241261** and learned-head arm at **2.321006**. Thus neither
+extra training nor a mismatched exhaustive traversal was allowed to cause a
+regression. Both runs and the comparison folder are checksum-verified and
+published on Hugging Face.
+
 Every later quality-stage handoff now compares its untouched input with the
 retained best checkpoint from both matched arms, preventing two regressions
 from displacing a better model. Because that rule may reject hardware-friendly

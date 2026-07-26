@@ -1227,3 +1227,34 @@ starts from this A4 checkpoint and forces ternary Q/K/V, the four-entry integer
 attention lookup, two-bit attention routes, fixed Hadamard mixing, and three
 ternary residual planes. Its purpose is to measure the real cost of the
 hardware-oriented graph at matched capacity.
+
+## Shared QKV scales expose the hardware-quality price
+
+The first large-model ASIC-hardening comparison is complete. Both arms started
+from the same clip-2 checkpoint and received 4,000 QAT steps. The ordinary arm
+computed a fresh scale for each token; the hardware arm learned one stable
+scale for every Q/K/V head, allowing scale multiplication to move outside the
+large ternary dot products.
+
+On the exhaustive 4,907,776-target validation stream, dynamic token scales
+reach **2.230903 loss / 9.3083 perplexity**. Learned head scales reach
+**2.309650 / 10.0709**. The 0.078748 gap is the measured price of the cleaner
+factorization in this experiment. It is not attention collapse: the learned
+arm still uses all four routing codes, with 85.19% zero, 4.39% code 2, and
+1.96% code 3, and its attention entropy is 2.4293.
+
+The dynamic control is now our best exhaustive code-constrained result, beating
+the longer clip-2 refinement's 2.235370 by 0.004467. It still fails the strict
+deployment contract because its data-dependent scales are not ternary operands.
+The learned arm is more hardware-friendly but not selected for the quality
+branch. A fresh identical 200-batch gate retained the untouched source at
+2.226880 rather than either trained arm at 2.241261 and 2.321006. This is why
+we keep separate quality and mandatory-hardware endpoints.
+
+Qualitative samples agree with the loss ordering. The token-scale model writes
+recognizable multi-sentence stories but still repeats objects and occasionally
+breaks dialogue. The learned-scale model is also readable, yet shows more
+repetition and semantic errors. These samples are useful diagnostics, not a
+replacement for held-out loss. Both audited runs, packed exports, generations,
+and the comparison metadata are preserved in the public Hugging Face model
+repository.

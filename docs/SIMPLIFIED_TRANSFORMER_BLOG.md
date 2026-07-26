@@ -480,3 +480,17 @@ endpoint** must use stable per-head scales, ternary Q/K/V, simple ReLU,
 low-bit integer attention, and integer RMS normalization even if its stories
 score lower. The export checker must confirm the ternary-operand contract
 before that second model can be called complete.
+
+The first test of that split has now finished. Letting every token choose its
+own measuring scale gives **2.2309 loss**. Replacing those changing scales with
+one stable scale per attention head gives **2.3097**. The stable version is
+easier to build into a ternary chip, but it loses some story quality. Both
+models still use all four tiny attention choices, so this is not another
+collapsed-attention failure.
+
+For the next quality experiment we kept the untouched 2.2269 checkpoint,
+because an identical quick comparison showed that both extra-trained versions
+were worse. The stable-scale model is still saved for the separate strict
+hardware endpoint. This is the practical meaning of our two-answer rule:
+“best storyteller” and “cleanest ternary machine” do not have to be the same
+checkpoint while the research is unfinished.
