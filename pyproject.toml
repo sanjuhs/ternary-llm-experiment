@@ -32,6 +32,7 @@ ternary-diagnostics = "ternary_llm.diagnostics:main"
 ternary-triton-benchmark = "ternary_llm.packed_triton:main"
 ternary-export = "ternary_llm.export:main"
 ternary-calibrate-projection = "ternary_llm.calibrate_projection:main"
+ternary-audit-artifacts = "ternary_llm.artifacts:main"
 
 [build-system]
 requires = ["hatchling"]
