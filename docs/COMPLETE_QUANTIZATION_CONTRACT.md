@@ -22,6 +22,14 @@ tensors, performs the large dot product with INT32 accumulation, and applies
 the two small per-vector scales afterward. Tests compare this path against the
 reconstructed fake-quantized tensors element for element.
 
+Route·V is not yet equally clean in the current quality path. V is ternary-coded
+but has a separate scale per token; because attention mixes many token
+positions, those scales cannot be pulled outside the whole reduction as one
+factor. The ASIC-strict follow-up will compare a learned layer/head-shared V
+scale, following BWTA, against fixed-point scale multipliers and scale-bucketed
+value planes. Until one of those paths is validated, “ternary V operand” is
+true, while “pure binary-by-ternary Route·V kernel” remains a target.
+
 ## What cannot literally stay in two bits
 
 Dot products sum hundreds of products. Softmax also sums a row of exponentials.

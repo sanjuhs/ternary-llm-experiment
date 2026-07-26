@@ -158,6 +158,14 @@ ternary activations and binary attention, but its reported language-model
 experiment replaces only 30% of the least-sensitive layers. It does not yet
 prove that every layer of an LLM can be made ternary without a quality cost.
 
+There is also a small but important hardware detail. BWTA gives a whole layer
+one learned scale for Q, K, the attention map, and V. It can therefore perform
+the big matrix multiplications on packed binary/ternary codes and multiply by
+the scale afterward. Our present experiment gives each V token its own scale,
+which usually reconstructs values more accurately but makes Route·V harder to
+implement as one pure binary-by-ternary kernel. A future shared-scale V arm will
+measure that accuracy-versus-hardware trade-off directly.
+
 ## What would count as success?
 
 One attractive sample is not enough. We will call a method competitive only

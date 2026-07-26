@@ -350,6 +350,13 @@ The limitation is important: its LLM evaluation quantizes only the 30% least
 sensitive layers and keeps nonlinear operations and boundary layers at higher
 precision. It does not prove that every LLM block can be one-code ternary.
 
+Appendix B shows how its attention kernels stay code-only: learned layerwise
+scales \(s_Qs_K\) are applied after ternary Q·K, and \(s_{Att}s_V\) after
+boolean-by-ternary Route·V. Our exact Q·K reference has the same factorization,
+although it uses finer per-vector scales. Our current per-token V scales cannot
+all be moved outside Route·V, so a learned shared V scale is now an explicit
+ASIC-hardening experiment rather than an unverified assumption.
+
 ### EXAQ
 
 [EXAQ](https://openreview.net/forum?id=AuJ6gDjcZK) shows that the shifted softmax

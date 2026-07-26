@@ -322,6 +322,27 @@ at higher precision. Its average LLM representation is reported as W1.3/A6. It
 therefore supports our proposed training mechanism without proving a fully
 ternary LLM.
 
+The paper's Appendix B also clarifies an important implementation detail.
+BWTA uses learnable layerwise scales \(s_Q\) and \(s_K\) around its
+ternary-by-ternary Q·K kernel, and learnable scales \(s_{Att}\) and \(s_V\)
+around its boolean-by-ternary Route·V kernel. Because each scale is shared at
+the layer level, the large matrix multiplication operates only on packed codes
+and the scale product is applied afterward.
+
+Our current reference is slightly different. Q and K use per-vector scales;
+those remain factorizable after each integer Q·K dot product, and the repository
+now tests that exact INT32 path. V also uses a per-token scale, however, and
+different key positions are mixed by Route·V. Those V scales cannot all be
+pulled outside the reduction as one scalar. A truly bit-serial Route·V kernel
+therefore needs either a learned shared V scale (the BWTA route), fixed-point
+scale multipliers inside the reduction, or scale-bucketed value planes. The
+first option is the cleanest next ASIC-oriented ablation.
+
+BWTA is also explicit that its LLM implementation retains global
+Softmax/LayerNorm/GELU in BF16 and the first and last layers in full precision.
+Its kernel evidence is strong evidence for the expensive matrix products, not
+for our stricter whole-graph low-bit claim.
+
 Two other findings explain why the remaining step is hard:
 
 - [Q-ViT](https://arxiv.org/abs/2210.06707) found that quantizing Q,
