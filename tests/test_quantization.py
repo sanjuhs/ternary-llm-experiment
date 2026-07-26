@@ -188,6 +188,22 @@ def test_integer_rms_norm_rejects_mismatched_weight() -> None:
         integer_rms_norm_reference(torch.ones(2, 4), torch.ones(3))
 
 
+def test_integer_rms_norm_integer_sqrt_is_exact_for_large_codes() -> None:
+    inputs = torch.tensor(
+        [
+            [0.0, 1.0, -1.0, 0.5],
+            [1024.0, -1024.0, 511.5, -511.5],
+        ]
+    )
+    weight = torch.ones(4)
+
+    actual, codes = integer_rms_norm_reference(inputs, weight)
+
+    assert torch.isfinite(actual).all()
+    assert codes.dtype == torch.int32
+    assert torch.equal(codes[0], torch.tensor([0, 21845, -21845, 10923]))
+
+
 def test_int2_attention_scores_use_four_codes_and_preserve_mask() -> None:
     scores = torch.tensor([[[[1.0, 0.0, -2.0], [2.0, 1.0, 0.0], [0.0, -1.0, -4.0]]]])
     valid = torch.ones(3, 3, dtype=torch.bool).tril()

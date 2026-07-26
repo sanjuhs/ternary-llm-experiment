@@ -54,6 +54,12 @@ VALID_ATTENTION_GATES: tuple[AttentionGate, ...] = ("none", "sigmoid", "binary")
 FeedForwardActivation = Literal["gelu", "relu"]
 VALID_FEED_FORWARD_ACTIVATIONS: tuple[FeedForwardActivation, ...] = ("gelu", "relu")
 
+RMSNormQuantization = Literal["float", "integer_reference"]
+VALID_RMS_NORM_QUANTIZATIONS: tuple[RMSNormQuantization, ...] = (
+    "float",
+    "integer_reference",
+)
+
 ActivationEncoding = Literal["uniform", "residual_binary", "residual_ternary"]
 VALID_ACTIVATION_ENCODINGS: tuple[ActivationEncoding, ...] = (
     "uniform",
@@ -117,6 +123,7 @@ class ModelConfig:
     attention_gate: AttentionGate = "none"
     attention_gate_initial: float = 0.9
     feed_forward_activation: FeedForwardActivation = "gelu"
+    rms_norm_quantization: RMSNormQuantization = "float"
 
     def validate(self) -> None:
         if self.vocab_size <= 4:
@@ -209,6 +216,12 @@ class ModelConfig:
                 "feed_forward_activation must be one of "
                 f"{VALID_FEED_FORWARD_ACTIVATIONS}, "
                 f"got {self.feed_forward_activation!r}"
+            )
+        if self.rms_norm_quantization not in VALID_RMS_NORM_QUANTIZATIONS:
+            raise ValueError(
+                "rms_norm_quantization must be one of "
+                f"{VALID_RMS_NORM_QUANTIZATIONS}, "
+                f"got {self.rms_norm_quantization!r}"
             )
 
 

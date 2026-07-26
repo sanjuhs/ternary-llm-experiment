@@ -48,6 +48,27 @@ def test_generation_respects_requested_length() -> None:
     assert generated.shape == (1, 7)
 
 
+def test_integer_rms_norm_runtime_matches_reference_and_has_ste_gradients() -> None:
+    config = ModelConfig(
+        vocab_size=300,
+        context_length=8,
+        d_model=16,
+        n_layers=1,
+        n_heads=2,
+        ff_multiplier=2,
+        rms_norm_quantization="integer_reference",
+    )
+    model = TernaryGPT(config, "hadamard_progressive")
+    inputs = torch.randint(0, config.vocab_size, (2, config.context_length))
+
+    _, loss = model(inputs, inputs)
+
+    assert loss is not None and torch.isfinite(loss)
+    loss.backward()
+    assert model.blocks[0].attention_norm.weight.grad is not None
+    assert model.token_embedding.grad is not None
+
+
 @pytest.mark.parametrize("lanes", [2, 4])
 def test_population_mode_computes_loss_and_gradients(lanes: int) -> None:
     config = ModelConfig(

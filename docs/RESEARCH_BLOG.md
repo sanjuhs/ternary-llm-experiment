@@ -803,6 +803,17 @@ teacher-distillation, backward, validation, diagnostic, and serialization
 path. It confirmed exact binary Q/K alphabets and ternary V; its random-data
 loss is not a quality measurement.
 
+The remaining RMSNorm boundary is now executable rather than merely described.
+An opt-in `integer_reference` path converts each incoming norm vector to signed
+fixed point, accumulates squares in INT64, computes a tensorized exact integer
+square root and integer division, and multiplies by ternary norm-weight codes.
+Its forward pass is the integer reference; its backward pass uses the ordinary
+RMSNorm derivative as a straight-through surrogate. On the same local smoke
+checkpoint and batch, floating RMSNorm measured loss 6.19863 and the integer
+path 6.19745. That tiny random-data comparison establishes wiring only. The
+27.4M endpoint still needs a matched PTQ screen and, if necessary, QAT before
+normalization can be called quality-preserving.
+
 We deliberately omit BinaryAttention's optional dense/context bias: an
 unbounded floating bias matrix would be a hidden bypass around the low-bit
 score path. Our dynamic-scale reference uses per-vector magnitude alignment;

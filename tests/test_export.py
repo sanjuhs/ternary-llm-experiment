@@ -71,6 +71,7 @@ def test_inference_contract_distinguishes_operands_from_end_to_end_runtime() -> 
             "attention_rectification": "none",
             "attention_gate": "none",
             "feed_forward_activation": "relu",
+            "rms_norm_quantization": "integer_reference",
             "dropout": 0.0,
         },
     }
@@ -79,8 +80,9 @@ def test_inference_contract_distinguishes_operands_from_end_to_end_runtime() -> 
 
     assert contract["ternary_operand_contract"]["satisfied"]
     assert not contract["end_to_end_integer_reference"]["satisfied"]
-    assert "integer RMSNorm reference is not wired into the model runtime" in (
-        contract["end_to_end_integer_reference"]["remaining_boundaries"]
+    assert all(
+        "RMSNorm" not in boundary
+        for boundary in contract["end_to_end_integer_reference"]["remaining_boundaries"]
     )
 
 
@@ -95,6 +97,7 @@ def test_inference_contract_rejects_dynamic_scales_and_gelu() -> None:
             "attention_rectification": "none",
             "attention_gate": "none",
             "feed_forward_activation": "gelu",
+            "rms_norm_quantization": "float",
             "dropout": 0.0,
         },
     }
@@ -105,6 +108,7 @@ def test_inference_contract_rejects_dynamic_scales_and_gelu() -> None:
     assert set(operand_contract["violations"]) == {
         "factorizable_shared_qkv_scales",
         "integer_friendly_ffn_activation",
+        "integer_rms_norm",
     }
 
 
@@ -119,6 +123,7 @@ def test_inference_contract_accepts_binary_qk_as_ternary_subset() -> None:
             "attention_rectification": "none",
             "attention_gate": "none",
             "feed_forward_activation": "relu",
+            "rms_norm_quantization": "integer_reference",
             "dropout": 0.0,
         },
     }

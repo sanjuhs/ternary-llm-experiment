@@ -25,6 +25,7 @@ from ternary_llm.config import (
     VALID_MODES,
     VALID_QKV_QUANTIZATIONS,
     VALID_QKV_SCALE_GRANULARITIES,
+    VALID_RMS_NORM_QUANTIZATIONS,
     ExperimentConfig,
     ModelConfig,
     load_config,
@@ -527,6 +528,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--feed-forward-activation",
         choices=VALID_FEED_FORWARD_ACTIVATIONS,
     )
+    parser.add_argument(
+        "--rms-norm-quantization",
+        choices=VALID_RMS_NORM_QUANTIZATIONS,
+    )
     parser.add_argument("--eval-batches", type=int)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--run-name")
@@ -655,6 +660,8 @@ def main() -> None:
         model_overrides["attention_gate_initial"] = args.attention_gate_initial
     if args.feed_forward_activation:
         model_overrides["feed_forward_activation"] = args.feed_forward_activation
+    if args.rms_norm_quantization:
+        model_overrides["rms_norm_quantization"] = args.rms_norm_quantization
     if model_overrides:
         config = replace(config, model=replace(config.model, **model_overrides))
     if train_overrides:

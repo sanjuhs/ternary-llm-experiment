@@ -14,6 +14,7 @@ from ternary_llm.quantization import (
     binarize_activation_with_learned_scale,
     binary_activation_codes,
     code_histogram,
+    integer_rms_norm_reference,
     progressive_activation_codes,
     quantize_activation,
     quantize_attention,
@@ -84,6 +85,7 @@ class TernaryRMSNorm(nn.Module):
         activation_encoding: str,
         activation_planes: int,
         population_lanes: int,
+        rms_norm_quantization: str,
         eps: float = 1e-5,
     ) -> None:
         super().__init__()
@@ -95,6 +97,7 @@ class TernaryRMSNorm(nn.Module):
         self.activation_encoding = activation_encoding
         self.activation_planes = activation_planes
         self.population_lanes = population_lanes
+        self.rms_norm_quantization = rms_norm_quantization
         self.eps = eps
 
     def forward(self, inputs: Tensor) -> Tensor:
@@ -102,7 +105,17 @@ class TernaryRMSNorm(nn.Module):
         weight = self.weight
         if uses_ternary_weights(self.mode):
             weight = ternarize_weight(weight, self.weight_threshold)
-        output = normalized * weight
+        surrogate = normalized * weight
+        if self.rms_norm_quantization == "integer_reference":
+            exact, _ = integer_rms_norm_reference(
+                inputs,
+                self.weight,
+                weight_threshold=self.weight_threshold,
+                eps=self.eps,
+            )
+            output = surrogate + (exact - surrogate).detach()
+        else:
+            output = surrogate
         if uses_quantized_activations(self.mode):
             output = quantize_activation(
                 output,
@@ -514,6 +527,7 @@ class TransformerBlock(nn.Module):
             "activation_encoding": config.activation_encoding,
             "activation_planes": config.activation_planes,
             "population_lanes": config.population_lanes if mode == "population_ternary" else 1,
+            "rms_norm_quantization": config.rms_norm_quantization,
         }
         self.attention_norm = TernaryRMSNorm(config.d_model, **norm_args)
         self.attention = CausalSelfAttention(config, mode)
@@ -670,6 +684,7 @@ class TernaryGPT(nn.Module):
             population_lanes=(
                 config.population_lanes if mode == "population_ternary" else 1
             ),
+            rms_norm_quantization=config.rms_norm_quantization,
         )
         nn.init.normal_(self.token_embedding, mean=0.0, std=0.02)
         nn.init.normal_(self.position_embedding, mean=0.0, std=0.02)

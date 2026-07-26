@@ -17,6 +17,7 @@ from ternary_llm.config import (
     VALID_MODES,
     VALID_QKV_QUANTIZATIONS,
     VALID_QKV_SCALE_GRANULARITIES,
+    VALID_RMS_NORM_QUANTIZATIONS,
     ModelConfig,
     load_config,
 )
@@ -75,6 +76,10 @@ def main() -> None:
         "--feed-forward-activation",
         choices=VALID_FEED_FORWARD_ACTIVATIONS,
     )
+    parser.add_argument(
+        "--rms-norm-quantization",
+        choices=VALID_RMS_NORM_QUANTIZATIONS,
+    )
     args = parser.parse_args()
 
     file_config = load_config(args.config)
@@ -111,6 +116,8 @@ def main() -> None:
         model_overrides["activation_planes"] = args.activation_planes
     if args.feed_forward_activation:
         model_overrides["feed_forward_activation"] = args.feed_forward_activation
+    if args.rms_norm_quantization:
+        model_overrides["rms_norm_quantization"] = args.rms_norm_quantization
     if model_overrides:
         model_config = replace(model_config, **model_overrides)
     evaluation_mode = args.mode or stored["mode"]

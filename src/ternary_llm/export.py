@@ -157,9 +157,20 @@ def inference_contract(config: dict[str, Any]) -> dict[str, Any]:
         "no_sigmoid_attention_gate": model.get("attention_gate") == "none",
         "integer_friendly_ffn_activation": model.get("feed_forward_activation")
         == "relu",
+        "integer_rms_norm": model.get("rms_norm_quantization")
+        == "integer_reference",
         "dropout_disabled": float(model.get("dropout", 0.0)) == 0.0,
     }
     violations = [name for name, passed in checks.items() if not passed]
+    remaining_boundaries = [
+        "requantization scale arithmetic in the PyTorch quality path",
+        "final token-sampling softmax",
+    ]
+    if not checks["integer_rms_norm"]:
+        remaining_boundaries.insert(
+            0,
+            "integer RMSNorm reference is not wired into this checkpoint runtime",
+        )
     return {
         "ternary_operand_contract": {
             "satisfied": not violations,
@@ -168,11 +179,7 @@ def inference_contract(config: dict[str, Any]) -> dict[str, Any]:
         },
         "end_to_end_integer_reference": {
             "satisfied": False,
-            "remaining_boundaries": [
-                "integer RMSNorm reference is not wired into the model runtime",
-                "requantization scale arithmetic in the PyTorch quality path",
-                "final token-sampling softmax",
-            ],
+            "remaining_boundaries": remaining_boundaries,
             "note": (
                 "The artifact proves packed operands and declares auxiliary "
                 "fixed-point scales; it is not a fused ASIC runtime."

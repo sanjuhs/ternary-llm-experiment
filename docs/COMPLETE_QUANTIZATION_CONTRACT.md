@@ -9,6 +9,7 @@ implementable definition.
 | Boundary | Strict target | Current experiment |
 |---|---:|---:|
 | Embedding, normalization, and linear weights | ternary, packed in 2 bits | ternary fake quantization plus deployment export |
+| RMSNorm arithmetic | fixed-point input, integer reductions and square root | opt-in `integer_reference` runtime with STE training |
 | Residual-stream activations | binary/ternary code planes | fixed-Hadamard residual-plane variants |
 | Q, K, and V operands | ternary, permitting binary as a strict subset | `ternary`, plus matched `binary_qk_ternary_v` fallback |
 | Softmax input | four codes (2 bits) | `score_lut_prob_int2` |
@@ -86,15 +87,19 @@ bits, width-256 linear reductions about ten, and width-1,024 feed-forward
 reductions about twelve. INT32 is a convenient implementation container, not the
 minimum ASIC width.
 
-The present end-to-end PyTorch path is still not a fused integer runtime. A
-portable RMSNorm reference now quantizes its input to fixed-point codes,
-accumulates squares in INT64, uses an exact integer square root and division,
-and applies ternary normalization weights. Tests compare it with the
-fake-quantized result. It is not yet wired through the complete model.
-Scale/requantization arithmetic and the final token-sampling softmax also remain
-explicit deployment boundaries. ReLU removes GELU if its matched quality
-permits; integration of integer RMSNorm remains necessary before claiming
-every nonlinear Transformer operation uses the deployment reference.
+The present end-to-end PyTorch path is still not a fused integer runtime. Its
+portable RMSNorm reference quantizes the input to fixed-point codes, accumulates
+squares in INT64, uses a tensorized exact integer square root and division, and
+applies ternary normalization weights. The `integer_reference` model option now
+wires that arithmetic through both Transformer norms and the final norm.
+Training uses its exact forward result with the ordinary RMSNorm derivative as
+a straight-through surrogate. Tests cover exact arithmetic, model gradients,
+checkpoint serialization, and checkpoint-level evaluation. A same-batch smoke
+comparison changed loss from 6.19863 to 6.19745; this is a wiring check, not a
+TinyStories quality result. Scale/requantization arithmetic and the final
+token-sampling softmax remain explicit deployment boundaries. The option must
+still pass matched exhaustive validation on the 27.4M endpoint before the
+project can call that boundary quality-preserving.
 
 ## Matched attention experiment
 

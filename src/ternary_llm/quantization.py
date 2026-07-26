@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from collections.abc import Sequence
 
 import torch
@@ -289,11 +288,19 @@ def _integer_sqrt_tensor(values: Tensor) -> Tensor:
         raise ValueError("integer square root expects int64 values")
     if bool(torch.any(values < 0)):
         raise ValueError("integer square root expects non-negative values")
-    original_device = values.device
-    roots = [math.isqrt(int(value)) for value in values.detach().cpu().reshape(-1)]
-    return torch.tensor(roots, dtype=torch.int64, device=original_device).reshape(
-        values.shape
-    )
+    # Restoring square root uses only integer shifts, additions, comparisons,
+    # and subtraction. Keeping it tensorized avoids a GPU-to-CPU round trip in
+    # the opt-in model runtime while remaining bit-exact with math.isqrt.
+    remainder = values.detach().clone()
+    root = torch.zeros_like(remainder)
+    bit = 1 << 62
+    while bit:
+        candidate = root + bit
+        accepted = remainder >= candidate
+        remainder = torch.where(accepted, remainder - candidate, remainder)
+        root = torch.where(accepted, (root >> 1) + bit, root >> 1)
+        bit >>= 2
+    return root
 
 
 def integer_rms_norm_reference(
@@ -326,7 +333,11 @@ def integer_rms_norm_reference(
         raise ValueError("eps must be positive")
 
     input_multiplier = 1 << input_fraction_bits
-    input_codes = (inputs.detach().to(torch.float64) * input_multiplier).round()
+    # MPS has no float64 dtype. Float32 still represents the intended
+    # fixed-point conversion exactly throughout the normal activation range;
+    # CPU and CUDA retain float64 before the integer boundary.
+    conversion_dtype = torch.float32 if inputs.device.type == "mps" else torch.float64
+    input_codes = (inputs.detach().to(conversion_dtype) * input_multiplier).round()
     input_codes = input_codes.clamp(-(1 << 31), (1 << 31) - 1).to(torch.int64)
     width = inputs.shape[-1]
     sum_squares = (input_codes * input_codes).sum(dim=-1, keepdim=True)
