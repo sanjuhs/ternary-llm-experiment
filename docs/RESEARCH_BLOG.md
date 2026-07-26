@@ -855,6 +855,17 @@ slowing curve. We still retain the predeclared 30k control so its final result
 is unbiased. The diagnostic trend is the reason to run the already-declared
 clip sweep afterward—not permission to alter the control midstream.
 
+The live trainer predates automatic best-checkpoint retention and writes its
+resumable checkpoint every 5,000 steps. Before the next overwrite, we therefore
+preserved the exact step-10,000 checkpoint—the best checkpoint actually written
+before the 12k metric minimum—as `checkpoint-step-10000.pt`, with SHA-256
+`d543268160bf9e5405a1b89747665fc1dca54686535cc0129bd8863e5d17a160`.
+The finalizer will evaluate, diagnose, generate from, export, and audit that
+checkpoint as a separate preserved run. The clip experiment will start from
+the best available saved checkpoint while still reporting the full 30k control.
+All newly launched training arms now retain `best-checkpoint.pt`
+automatically, and every subsequent stage records which checkpoint it used.
+
 [Accurate 4-Bit Quantization with Hyperspherical
 Architecture](https://openreview.net/forum?id=tiqfxkYf1o) bounds attention and
 MLP error growth by normalizing activations and constraining weights so that

@@ -250,8 +250,19 @@ def build_run_manifest(
     validation_rows = _validate_metrics(run_dir / "metrics.jsonl")
     deployment = _validate_packed_export(run_dir)
 
-    optional_files = ("SHA256SUMS", "model-2bit.pt", "packed-export.json")
-    for name in optional_files:
+    optional_files = {
+        "SHA256SUMS",
+        "model-2bit.pt",
+        "packed-export.json",
+    }
+    if (run_dir / "best-checkpoint.pt").is_file():
+        optional_files.add("best-checkpoint.pt")
+    optional_files.update(
+        path.name
+        for path in run_dir.glob("checkpoint-step-*.pt")
+        if path.is_file()
+    )
+    for name in sorted(optional_files):
         path = run_dir / name
         if path.is_file() and path.stat().st_size > 0:
             files[name] = {"bytes": path.stat().st_size, "sha256": _sha256(path)}

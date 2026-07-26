@@ -442,6 +442,17 @@ biasing the comparison. The rising zero-route fraction, falling entropy, and
 permanently unused probability code 2 are concrete evidence for the
 predeclared clip sweep, not grounds to change the live control's settings.
 
+The running process was launched before best-checkpoint retention existed, so
+its periodic `checkpoint.pt` would have overwritten the step-10,000 state at
+15,000. We preserved that exact 337,312,923-byte checkpoint as
+`checkpoint-step-10000.pt`; both files matched SHA-256
+`d543268160bf9e5405a1b89747665fc1dca54686535cc0129bd8863e5d17a160`
+before the overwrite. Finalization will turn it into a separately exhaustive,
+generated, exported, checksummed, and audited run. Downstream arms now save
+`best-checkpoint.pt` at every improved validation and select the best available
+saved checkpoint between stages, while final checkpoints remain the matched
+fixed-budget comparison.
+
 [PT2-LLM](https://openreview.net/forum?id=7QZanjCD6M) adds activation-aware
 ternary grid alignment and structural-similarity reordering for weights.
 [From Attention to Activation](https://openreview.net/forum?id=IjduZQK8gM)

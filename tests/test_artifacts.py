@@ -37,6 +37,12 @@ def _write_complete_checksums(run_dir: Path) -> None:
     for optional in ("model-2bit.pt", "packed-export.json"):
         if (run_dir / optional).is_file():
             names.append(optional)
+    for optional in (
+        "best-checkpoint.pt",
+        *(path.name for path in sorted(run_dir.glob("checkpoint-step-*.pt"))),
+    ):
+        if (run_dir / optional).is_file():
+            names.append(optional)
     declarations = [
         f"{hashlib.sha256((run_dir / name).read_bytes()).hexdigest()}  {name}"
         for name in names
@@ -82,6 +88,19 @@ def test_artifact_manifest_can_require_complete_checksums(tmp_path: Path) -> Non
     manifest = build_run_manifest(run_dir, require_complete_checksums=True)
 
     assert "SHA256SUMS" in manifest["files"]
+
+
+def test_artifact_manifest_includes_preserved_checkpoints(tmp_path: Path) -> None:
+    run_dir = tmp_path / "strict-run"
+    _write_completed_run(run_dir)
+    (run_dir / "best-checkpoint.pt").write_bytes(b"best")
+    (run_dir / "checkpoint-step-10000.pt").write_bytes(b"step-10000")
+    _write_complete_checksums(run_dir)
+
+    manifest = build_run_manifest(run_dir, require_complete_checksums=True)
+
+    assert manifest["files"]["best-checkpoint.pt"]["bytes"] == 4
+    assert manifest["files"]["checkpoint-step-10000.pt"]["bytes"] == 10
 
 
 def test_artifact_manifest_verifies_declared_non_checkpoint_hash(

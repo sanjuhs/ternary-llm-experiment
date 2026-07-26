@@ -38,13 +38,18 @@ case "${selected_normalization}" in
     exit 1
     ;;
 esac
-source_checkpoint="${base}/${source_run}/checkpoint.pt"
-if [[ ! -f "${source_checkpoint}" ]]; then
+source_run_dir="${base}/${source_run}"
+if [[ -s "${source_run_dir}/best-checkpoint.pt" ]]; then
+  source_checkpoint="${source_run_dir}/best-checkpoint.pt"
+elif [[ -s "${source_run_dir}/checkpoint.pt" ]]; then
+  source_checkpoint="${source_run_dir}/checkpoint.pt"
+else
   echo "selected normalization checkpoint is missing" >&2
   exit 1
 fi
 
 mkdir -p "${experiment}"
+printf '%s\n' "${source_checkpoint}" > "${experiment}/source-checkpoint.txt"
 
 # ReLU removes GELU's tanh/polynomial approximation from the deployed FFN.
 # Train an unchanged GELU arm for exactly the same budget so a difference
@@ -125,7 +130,7 @@ for activation in gelu relu; do
 
   (
     cd "${run_dir}"
-    sha256sum \
+    checksum_files=(
       checkpoint.pt \
       resolved-config.json \
       metrics.jsonl \
@@ -133,8 +138,17 @@ for activation in gelu relu; do
       diagnostics.json \
       generations.txt \
       model-2bit.pt \
-      packed-export.json \
-      > SHA256SUMS
+      packed-export.json
+    )
+    if [[ -f best-checkpoint.pt ]]; then
+      checksum_files+=(best-checkpoint.pt)
+    fi
+    for preserved_checkpoint in checkpoint-step-*.pt; do
+      if [[ -f "${preserved_checkpoint}" ]]; then
+        checksum_files+=("${preserved_checkpoint}")
+      fi
+    done
+    sha256sum "${checksum_files[@]}" > SHA256SUMS
   )
   uv run ternary-audit-artifacts \
     --require-complete-checksums \

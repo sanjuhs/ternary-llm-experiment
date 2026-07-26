@@ -17,17 +17,18 @@ if [[ -s "${experiment}/SUCCESS" ]]; then
 fi
 
 selected_clip="$(jq -r '.selected_clip' "${clip_experiment}/selection.json")"
-source_checkpoint="$(
-  find "${base}" -maxdepth 2 -type f \
-    -path "${base}/attention-clip-selected-${selected_clip}-refine/checkpoint.pt" \
-    -print -quit
-)"
-if [[ -z "${source_checkpoint}" ]]; then
+source_run="${base}/attention-clip-selected-${selected_clip}-refine"
+if [[ -s "${source_run}/best-checkpoint.pt" ]]; then
+  source_checkpoint="${source_run}/best-checkpoint.pt"
+elif [[ -s "${source_run}/checkpoint.pt" ]]; then
+  source_checkpoint="${source_run}/checkpoint.pt"
+else
   echo "selected clip-refinement checkpoint is missing" >&2
   exit 1
 fi
 
 mkdir -p "${experiment}"
+printf '%s\n' "${source_checkpoint}" > "${experiment}/source-checkpoint.txt"
 
 uv run ternary-evaluate \
   --config "${config}" \
@@ -178,7 +179,7 @@ for arm in token learned_head; do
 
   (
     cd "${run_dir}"
-    sha256sum \
+    checksum_files=(
       checkpoint.pt \
       resolved-config.json \
       metrics.jsonl \
@@ -186,8 +187,17 @@ for arm in token learned_head; do
       diagnostics.json \
       generations.txt \
       model-2bit.pt \
-      packed-export.json \
-      > SHA256SUMS
+      packed-export.json
+    )
+    if [[ -f best-checkpoint.pt ]]; then
+      checksum_files+=(best-checkpoint.pt)
+    fi
+    for preserved_checkpoint in checkpoint-step-*.pt; do
+      if [[ -f "${preserved_checkpoint}" ]]; then
+        checksum_files+=("${preserved_checkpoint}")
+      fi
+    done
+    sha256sum "${checksum_files[@]}" > SHA256SUMS
   )
   uv run ternary-audit-artifacts \
     --require-complete-checksums \

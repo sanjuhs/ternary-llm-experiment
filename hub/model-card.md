@@ -154,6 +154,12 @@ regressed by 0.006134 while residual NMSE rose to 0.02187. This establishes a
 plateau followed by regression without changing or prematurely stopping the
 predeclared 30k control.
 
+The exact step-10,000 checkpoint was preserved before its scheduled overwrite
+and will be published as a separately exhaustive, generated, exported, and
+audited run. New downstream arms automatically retain `best-checkpoint.pt`;
+each stage uses the best available saved checkpoint while retaining its final
+fixed-budget checkpoint for the matched comparison.
+
 ## Deployment artifact contract
 
 New completed runs use `ternary-deployment-v2`:

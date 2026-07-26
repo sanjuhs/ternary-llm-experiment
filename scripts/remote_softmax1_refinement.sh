@@ -21,13 +21,18 @@ selected_clip="$(jq -r '.selected_clip' "${clip_experiment}/selection.json")"
 selected_initial="$(
   jq -r '.selected_initial_scale' "${scale_experiment}/selection.json"
 )"
-source_checkpoint="${base}/shared-head-qkv-scale-${selected_initial}-refine/checkpoint.pt"
-if [[ ! -f "${source_checkpoint}" ]]; then
+source_run="${base}/shared-head-qkv-scale-${selected_initial}-refine"
+if [[ -s "${source_run}/best-checkpoint.pt" ]]; then
+  source_checkpoint="${source_run}/best-checkpoint.pt"
+elif [[ -s "${source_run}/checkpoint.pt" ]]; then
+  source_checkpoint="${source_run}/checkpoint.pt"
+else
   echo "shared-head QKV scale checkpoint is missing" >&2
   exit 1
 fi
 
 mkdir -p "${experiment}"
+printf '%s\n' "${source_checkpoint}" > "${experiment}/source-checkpoint.txt"
 
 for normalization in softmax softmax1; do
   uv run ternary-evaluate \
@@ -117,7 +122,7 @@ for normalization in softmax softmax1; do
 
   (
     cd "${run_dir}"
-    sha256sum \
+    checksum_files=(
       checkpoint.pt \
       resolved-config.json \
       metrics.jsonl \
@@ -125,8 +130,17 @@ for normalization in softmax softmax1; do
       diagnostics.json \
       generations.txt \
       model-2bit.pt \
-      packed-export.json \
-      > SHA256SUMS
+      packed-export.json
+    )
+    if [[ -f best-checkpoint.pt ]]; then
+      checksum_files+=(best-checkpoint.pt)
+    fi
+    for preserved_checkpoint in checkpoint-step-*.pt; do
+      if [[ -f "${preserved_checkpoint}" ]]; then
+        checksum_files+=("${preserved_checkpoint}")
+      fi
+    done
+    sha256sum "${checksum_files[@]}" > SHA256SUMS
   )
   uv run ternary-audit-artifacts \
     --require-complete-checksums \

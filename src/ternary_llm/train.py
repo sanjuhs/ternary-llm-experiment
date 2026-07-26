@@ -104,6 +104,24 @@ def append_metric(path: Path, metric: dict[str, Any]) -> None:
         output.write(json.dumps(metric, sort_keys=True) + "\n")
 
 
+def best_logged_validation_loss(path: Path) -> float:
+    """Return the best finite validation loss already recorded for a run."""
+    if not path.is_file():
+        return math.inf
+    best = math.inf
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            metric = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(metric, dict) or metric.get("type") != "validation":
+            continue
+        loss = metric.get("loss")
+        if isinstance(loss, (int, float)) and math.isfinite(loss):
+            best = min(best, float(loss))
+    return best
+
+
 def verify_tokenizer(config: ExperimentConfig) -> None:
     tokenizer_path = Path(config.data.tokenizer)
     if not tokenizer_path.exists():
@@ -346,6 +364,8 @@ def train(
     interval_start = time.perf_counter()
     interval_tokens = 0
     final_checkpoint = output_dir / "checkpoint.pt"
+    best_checkpoint = output_dir / "best-checkpoint.pt"
+    best_validation_loss = best_logged_validation_loss(metrics_path)
 
     for step in range(start_step + 1, config.train.max_steps + 1):
         rate = learning_rate(step, config.train)
@@ -428,6 +448,19 @@ def train(
             }
             append_metric(metrics_path, metric)
             print(json.dumps(metric))
+            validation_loss = float(validation["loss"])
+            if validation_loss < best_validation_loss:
+                save_checkpoint(
+                    best_checkpoint,
+                    model=model,
+                    optimizer=optimizer,
+                    config=config,
+                    step=step,
+                    processed_tokens=processed_tokens,
+                    batch_generator=batch_generator,
+                    scaler=scaler,
+                )
+                best_validation_loss = validation_loss
 
         if step % config.train.checkpoint_interval == 0 or step == config.train.max_steps:
             save_checkpoint(

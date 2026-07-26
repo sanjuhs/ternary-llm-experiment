@@ -7,7 +7,14 @@ export UV_LINK_MODE=copy
 
 config="configs/tinystories_28m.toml"
 base="artifacts/tinystories-28m"
-source_checkpoint="${base}/hadamard-ternary-p3-half-pass/checkpoint.pt"
+strict_run="${base}/hadamard-ternary-p3-half-pass"
+if [[ -s "${strict_run}/best-checkpoint.pt" ]]; then
+  source_checkpoint="${strict_run}/best-checkpoint.pt"
+elif [[ -s "${strict_run}/checkpoint-step-10000.pt" ]]; then
+  source_checkpoint="${strict_run}/checkpoint-step-10000.pt"
+else
+  source_checkpoint="${strict_run}/checkpoint.pt"
+fi
 teacher_checkpoint="${base}/float-two-pass/checkpoint.pt"
 experiment="${base}/attention-clip-refinement"
 
@@ -16,6 +23,7 @@ if [[ -s "${experiment}/SUCCESS" ]]; then
   echo "attention clip refinement is already complete: ${experiment}/SUCCESS"
   exit 0
 fi
+printf '%s\n' "${source_checkpoint}" > "${experiment}/source-checkpoint.txt"
 
 # The clip=3 integer LUT produces exp(-3), exp(-2), exp(-1), exp(0).
 # After row-wise 2-bit probability quantization these map to codes 0, 0, 1, 3,
@@ -158,7 +166,7 @@ uv run ternary-export \
 
 (
   cd "${run_dir}"
-  sha256sum \
+  checksum_files=(
     checkpoint.pt \
     resolved-config.json \
     metrics.jsonl \
@@ -166,8 +174,17 @@ uv run ternary-export \
     diagnostics.json \
     generations.txt \
     model-2bit.pt \
-    packed-export.json \
-    > SHA256SUMS
+    packed-export.json
+  )
+  if [[ -f best-checkpoint.pt ]]; then
+    checksum_files+=(best-checkpoint.pt)
+  fi
+  for preserved_checkpoint in checkpoint-step-*.pt; do
+    if [[ -f "${preserved_checkpoint}" ]]; then
+      checksum_files+=("${preserved_checkpoint}")
+    fi
+  done
+  sha256sum "${checksum_files[@]}" > SHA256SUMS
 )
 uv run ternary-audit-artifacts \
   --require-complete-checksums \
