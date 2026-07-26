@@ -15,7 +15,9 @@ from ternary_llm.quantization import (
     residual_refinement_activation_codes,
     ternarize,
     ternarize_activation,
+    ternary_activation_codes,
     ternary_code,
+    ternary_qk_attention_reference,
 )
 
 
@@ -224,3 +226,23 @@ def test_integer_lut_clip_controls_probability_code_utilization(
     _, probability_codes = quantize_attention_probabilities_int2(probabilities)
 
     assert set(probability_codes.unique().tolist()) == expected_codes
+
+
+def test_ternary_qk_reference_matches_reconstructed_attention_scores() -> None:
+    torch.manual_seed(13)
+    query = torch.randn(2, 3, 4, 8)
+    key = torch.randn(2, 3, 5, 8)
+    query_codes, query_scale = ternary_activation_codes(query)
+    key_codes, key_scale = ternary_activation_codes(key)
+    reconstructed_query = query_codes * query_scale
+    reconstructed_key = key_codes * key_scale
+    expected = (
+        reconstructed_query @ reconstructed_key.transpose(-2, -1)
+    ) / 8**0.5
+
+    scores, accumulators = ternary_qk_attention_reference(query, key)
+
+    assert accumulators.dtype == torch.int32
+    assert accumulators.shape == (2, 3, 4, 5)
+    assert accumulators.abs().max().item() <= 8
+    assert torch.allclose(scores, expected, atol=1e-6, rtol=1e-6)

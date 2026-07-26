@@ -16,6 +16,12 @@ implementable definition.
 | KV cache | same low-bit format as K/V | planned runtime experiment |
 | Model output between blocks | ternary or INT4 | quantized residual boundary |
 
+The repository includes exact arithmetic references for both linear projections
+and attention Q·K. The Q·K reference converts Q and K into exact ternary code
+tensors, performs the large dot product with INT32 accumulation, and applies
+the two small per-vector scales afterward. Tests compare this path against the
+reconstructed fake-quantized tensors element for element.
+
 ## What cannot literally stay in two bits
 
 Dot products sum hundreds of products. Softmax also sums a row of exponentials.

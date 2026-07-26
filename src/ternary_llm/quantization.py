@@ -311,6 +311,47 @@ def ternary_activation_codes(
     return ternary_code(tensor.detach() / scale, threshold), scale
 
 
+def ternary_qk_attention_reference(
+    query: Tensor,
+    key: Tensor,
+    *,
+    threshold: float = 0.5,
+    eps: float = 1e-5,
+) -> tuple[Tensor, Tensor]:
+    """Compute scaled Q·K scores from ternary codes and INT32 accumulators.
+
+    Query and key may have different sequence lengths, but their batch/head
+    prefix dimensions and head width must match. Per-vector scales are applied
+    after the integer dot product, so both large matrix operands remain exact
+    ternary codes.
+    """
+    if query.ndim < 2 or key.ndim < 2:
+        raise ValueError("query and key must have at least two dimensions")
+    if query.shape[:-2] != key.shape[:-2] or query.shape[-1] != key.shape[-1]:
+        raise ValueError(
+            "query and key must share prefix dimensions and head width"
+        )
+    query_codes, query_scale = ternary_activation_codes(
+        query,
+        threshold,
+        eps=eps,
+    )
+    key_codes, key_scale = ternary_activation_codes(
+        key,
+        threshold,
+        eps=eps,
+    )
+    accumulators = (
+        query_codes.to(torch.int32)
+        @ key_codes.transpose(-2, -1).to(torch.int32)
+    )
+    scores = accumulators.to(query.dtype)
+    scores = scores * query_scale.to(query.dtype)
+    scores = scores * key_scale.transpose(-2, -1).to(query.dtype)
+    scores = scores / query.shape[-1] ** 0.5
+    return scores, accumulators
+
+
 def quantize_activation_a4(tensor: Tensor, eps: float = 1e-5) -> Tensor:
     """Per-vector asymmetric fake quantization to 16 activation levels."""
     minimum = tensor.detach().amin(dim=-1, keepdim=True)
