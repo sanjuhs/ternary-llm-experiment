@@ -9,7 +9,7 @@ implementable definition.
 | Boundary | Strict target | Current experiment |
 |---|---:|---:|
 | Embedding, normalization, and linear weights | ternary, packed in 2 bits | ternary fake quantization plus deployment export |
-| RMSNorm arithmetic | fixed-point input, integer reductions and square root | opt-in `integer_reference` runtime with STE training |
+| RMSNorm arithmetic | fixed-point input, integer reductions and square root | validated `integer_reference` runtime; exhaustive loss 2.160526 |
 | Residual-stream activations | binary/ternary code planes | fixed-Hadamard residual-plane variants |
 | Q, K, and V operands | ternary, permitting binary as a strict subset | `ternary`, plus matched `binary_qk_ternary_v` fallback |
 | Softmax input | four codes (2 bits) | `score_lut_prob_int2` |
@@ -26,7 +26,7 @@ both magnitude-optimal per-vector scales and factorized learned per-head
 scales. Tests compare these paths against the reconstructed fake-quantized
 tensors element for element.
 
-Route·V is not yet equally clean in the current quality path. V is ternary-coded
+Route·V is not equally factorizable in the current quality path. V is ternary-coded
 but has a separate scale per token; because attention mixes many token
 positions, those scales cannot be pulled outside the whole reduction as one
 factor. The ASIC-strict follow-up will compare a learned layer/head-shared V
@@ -94,12 +94,13 @@ applies ternary normalization weights. The `integer_reference` model option now
 wires that arithmetic through both Transformer norms and the final norm.
 Training uses its exact forward result with the ordinary RMSNorm derivative as
 a straight-through surrogate. Tests cover exact arithmetic, model gradients,
-checkpoint serialization, and checkpoint-level evaluation. A same-batch smoke
-comparison changed loss from 6.19863 to 6.19745; this is a wiring check, not a
-TinyStories quality result. Scale/requantization arithmetic and the final
-token-sampling softmax remain explicit deployment boundaries. The option must
-still pass matched exhaustive validation on the 27.4M endpoint before the
-project can call that boundary quality-preserving.
+checkpoint serialization, and checkpoint-level evaluation. On the 27.4M
+quality endpoint, matched exhaustive validation changes from 2.160893 loss
+with float RMSNorm to **2.160526** with integer-reference RMSNorm, a
+**-0.000367** difference. That passes the declared +0.02 gate, so this boundary
+is quality-preserving in the current experiment. Scale/requantization
+arithmetic and the final token-sampling softmax remain explicit deployment
+boundaries.
 
 ## Matched attention experiment
 
