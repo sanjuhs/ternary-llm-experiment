@@ -540,6 +540,23 @@ contract is still false because this quality branch retains dynamic per-token
 QKV scales; it is not being mislabeled as the strict endpoint. Both matched
 runs and their comparison are checksum-audited and published on Hugging Face.
 
+The matched Q/K alphabet experiment is complete:
+
+| Q/K/V route | Pre-QAT loss | 200-batch loss after 4k | Exhaustive loss | Perplexity |
+|---|---:|---:|---:|---:|
+| Ternary Q/K/V control | **2.171209** | **2.182636** | **2.171827** | **8.7743** |
+| Binary Q/K, ternary V | 2.333700 | 2.317982 | 2.307770 | 10.0520 |
+
+Both arms received the same 4,000-step budget and the same Q/K-relation
+distillation objective. The binary arm recovers some of its initial loss but
+finishes **0.135944** worse on the exhaustive stream. The extra Q/K
+distillation schedule also makes the ternary control 0.010933 worse than the
+protected ReLU source at 2.160893, so the downstream three-way gate retains
+that source rather than either newly trained checkpoint. Ternary Q/K/V is
+selected, and the binary-Q/K fallback is rejected. Both runs and their
+comparison passed checksums, artifact audits, and remote Hugging Face digest
+verification.
+
 Every later quality-stage handoff now compares its untouched input with the
 retained best checkpoint from both matched arms, preventing two regressions
 from displacing a better model. Because that rule may reject hardware-friendly

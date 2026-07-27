@@ -1329,3 +1329,34 @@ strict ternary-operand contract is not satisfied. The separate hardware branch
 will combine ReLU with learned factorizable head scales and integer-reference
 RMSNorm, and its loss will be reported independently rather than hidden behind
 the better quality-branch number.
+
+## Binary Q/K loses information that ternary Q/K needs
+
+BWTA and BinaryAttention make a useful hardware argument: binary
+`{-1,+1}` query and key vectors are especially cheap, and the value vectors can
+remain ternary. Binary arithmetic is also a subset of a ternary accelerator.
+The unresolved question was whether removing Q/K's zero code would make
+attention denser and recover quality.
+
+We tested that hypothesis against a matched ternary-Q/K/V control. Both arms
+started from the ReLU checkpoint, received 4,000 steps, and used the same
+teacher, examples, optimizer, and Q/K-relation distillation loss:
+
+| Q/K/V alphabet | Before adaptation | Exhaustive loss | Perplexity |
+|---|---:|---:|---:|
+| Ternary Q/K/V | **2.171209** | **2.171827** | **8.7743** |
+| Binary Q/K, ternary V | 2.333700 | 2.307770 | 10.0520 |
+
+The binary arm learns—it improves by 0.025929 between its initial 200-batch
+screen and exhaustive endpoint—but it remains **0.135944** worse than the
+matched ternary control. It also remains 0.146877 worse than the protected
+ReLU source's exhaustive loss. The result says that zero is not merely wasted
+Q/K capacity in this network; it carries useful attention geometry.
+
+There is a second, quieter result. Adding the Q/K-relation objective to the
+ordinary ternary control makes its exhaustive loss 0.010933 worse than the
+source. The source-selection guard therefore rejects both newly trained arms
+and retains the original ReLU checkpoint. This prevents a well-motivated
+distillation term from silently degrading the quality branch. The mandatory
+hardware endpoint also continues to use full ternary Q, K, and V, exactly as
+required by the project contract.

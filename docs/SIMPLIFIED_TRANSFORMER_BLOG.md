@@ -516,3 +516,11 @@ one stable scale per attention head, ternary Q/K/V, ReLU, tiny integer
 attention choices, and integer normalization. We will show its separate score
 even if it is worse. This keeps two claims honest: how well the model tells a
 story, and how completely its large inference operations fit a ternary chip.
+
+We also asked whether Q and K could be even simpler: only minus or plus, with
+no zero card. That would make them binary, which a ternary chip can execute.
+After equal extra training, ternary Q/K/V scored **2.1718 loss** while binary
+Q/K with ternary V scored **2.3078**. Removing zero made attention worse, not
+better. In this model, “say nothing in this direction” is useful information.
+We therefore keep all three Q/K/V choices—minus, zero, and plus—for the quality
+path and the final strict hardware path.
