@@ -102,6 +102,10 @@ not claim a speedup without a fused device kernel.
   runs](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/tinystories-28m/runs)
 - [Strict ternary-operand endpoint, packed export, and exhaustive
   metrics](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/tinystories-28m/runs/strict-contract-relu-rmsnorm)
+- [Fail-closed completion
+  audit](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/tinystories-28m/experiments/completion-audit)
+- [Attention-clip screening checkpoint
+  lineage](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/tinystories-28m/experiments/lineage)
 - [Complete tokenized TinyStories
   stream](https://huggingface.co/datasets/sanjuhs/ternary-tinystories-4096)
 
