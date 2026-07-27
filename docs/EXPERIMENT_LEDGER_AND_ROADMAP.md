@@ -557,6 +557,20 @@ selected, and the binary-Q/K fallback is rejected. Both runs and their
 comparison passed checksums, artifact audits, and remote Hugging Face digest
 verification.
 
+The integer-reference RMSNorm screen is complete too. It changes only the
+normalization arithmetic at evaluation time; no optimizer step is taken:
+
+| RMSNorm path | Matched 200-batch loss | Exhaustive loss | Perplexity |
+|---|---:|---:|---:|
+| Float reference | 2.171209 | 2.160893 | 8.6789 |
+| Integer reference | **2.170885** | **2.160526** | **8.6757** |
+
+Integer RMSNorm changes exhaustive loss by **-0.000367**, comfortably passing
+the predeclared +0.02 regression gate. The quality endpoint therefore selects
+the integer-reference path. In its packed export, dynamic per-token QKV scales
+are now the only failed ternary-operand-contract check; this remains distinct
+from the mandatory factorizable-scale hardware endpoint below.
+
 Every later quality-stage handoff now compares its untouched input with the
 retained best checkpoint from both matched arms, preventing two regressions
 from displacing a better model. Because that rule may reject hardware-friendly

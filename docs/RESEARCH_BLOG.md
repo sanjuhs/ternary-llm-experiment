@@ -1330,6 +1330,24 @@ will combine ReLU with learned factorizable head scales and integer-reference
 RMSNorm, and its loss will be reported independently rather than hidden behind
 the better quality-branch number.
 
+### Integer RMSNorm preserves the quality result
+
+RMSNorm looks simple, but its square, mean, reciprocal square root, and
+rescaling are another place where a nominally low-bit Transformer can quietly
+fall back to floating point. We evaluated an integer-reference implementation
+against the same saved ReLU checkpoint without any additional training:
+
+| RMSNorm arithmetic | 200-batch loss | Exhaustive loss | Perplexity |
+|---|---:|---:|---:|
+| Float reference | 2.171209 | 2.160893 | 8.6789 |
+| Integer reference | **2.170885** | **2.160526** | **8.6757** |
+
+The exhaustive change is **-0.000367**, effectively neutral and slightly
+favourable on this validation stream. This removes RMSNorm from the quality
+endpoint's list of floating-point exceptions. Its remaining failed
+ternary-operand-contract check is the data-dependent QKV scale; the strict
+hardware branch tests a factorizable per-head scale separately.
+
 ## Binary Q/K loses information that ternary Q/K needs
 
 BWTA and BinaryAttention make a useful hardware argument: binary

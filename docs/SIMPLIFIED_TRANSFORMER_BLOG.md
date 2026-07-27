@@ -517,6 +517,15 @@ attention choices, and integer normalization. We will show its separate score
 even if it is worse. This keeps two claims honest: how well the model tells a
 story, and how completely its large inference operations fit a ternary chip.
 
+We also replaced the ordinary RMSNorm calculation with an integer-reference
+version. Think of RMSNorm as the volume control before a layer: it measures how
+large the current numbers are and turns them up or down. On the entire
+validation set, loss moved from 2.160893 to **2.160526** (perplexity 8.6757).
+That tiny improvement is effectively a tie, which is the useful result: this
+normalization step does not need floating-point arithmetic to preserve model
+quality. The quality model's remaining hardware mismatch is its
+input-dependent QKV scale, not RMSNorm.
+
 We also asked whether Q and K could be even simpler: only minus or plus, with
 no zero card. That would make them binary, which a ternary chip can execute.
 After equal extra training, ternary Q/K/V scored **2.1718 loss** while binary
