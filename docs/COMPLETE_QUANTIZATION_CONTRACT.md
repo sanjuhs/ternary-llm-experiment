@@ -29,17 +29,18 @@ tensors element for element.
 Route·V is not equally factorizable in the current quality path. V is ternary-coded
 but has a separate scale per token; because attention mixes many token
 positions, those scales cannot be pulled outside the whole reduction as one
-factor. The ASIC-strict follow-up will compare a learned layer/head-shared V
-scale, following BWTA, against fixed-point scale multipliers and scale-bucketed
-value planes. Until one of those paths is validated, “ternary V operand” is
-true, while “pure binary-by-ternary Route·V kernel” remains a target.
+factor. The completed ASIC-strict branch therefore uses a learned
+head-shared V scale following BWTA. Fixed-point multipliers inside the
+reduction and scale-bucketed value planes remain possible future compromises
+between that strict branch and the more accurate dynamic-scale path.
 
-The learned head-shared branch is now executable. Each attention block stores
+The learned head-shared comparison is complete. Each attention block stores
 three small vectors of positive scales—one Q, K, and V value per head. The
 large tensors remain ternary codes; Q·K and Route·V use the packed codes, and
-the corresponding scale products can be applied after accumulation. This is an
-opt-in experiment and does not alter the running per-token-scale baseline. It
-is evaluated against an equal-budget per-token control.
+the corresponding scale products can be applied after accumulation. The first
+matched GELU arm exposed a 0.078748 loss cost versus dynamic token scales. After
+ReLU hardening and integer RMSNorm, the strict learned-head endpoint reaches
+2.250638 loss, 0.090112 behind the protected dynamic-scale quality endpoint.
 
 An exact Route·V arithmetic reference accompanies it. Each `{0,1,2,3}` route
 code is split into low and high binary planes. Both planes multiply ternary V
@@ -62,6 +63,13 @@ every small parameter “ternary”:
 Every completed downstream arm produces this export and its metadata. This
 prevents a per-token-scale or GELU checkpoint from being mislabeled as the
 final ASIC-ready endpoint merely because its shadow weights can be packed.
+
+The mandatory strict endpoint now passes this operand contract. With
+factorizable learned per-head QKV scales, ReLU, and integer-reference RMSNorm,
+it reaches **2.250638 exhaustive loss / 9.4938 perplexity** over 4,907,776
+targets. All eleven contract checks pass. The end-to-end integer-reference flag
+correctly remains false because the PyTorch quality path still emulates
+fixed-point requantization scales and final token sampling uses Softmax.
 
 ## What cannot literally stay in two bits
 

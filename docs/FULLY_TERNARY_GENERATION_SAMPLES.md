@@ -10,6 +10,41 @@ These samples demonstrate that the inference graph executes and emits partially
 story-like text. They do **not** demonstrate useful language quality or parity
 with the A4/A16 controls.
 
+## Strict ternary-operand endpoint
+
+- Architecture: factorizable per-head QKV scales, ternary Q/K/V, two-bit
+  integer attention, three ternary residual planes, ReLU, integer RMSNorm
+- Exhaustive validation loss: **2.250638**
+- Perplexity: **9.4938**
+- Packed ternary-operand contract: **passed**
+- Remaining non-fused boundaries: fixed-point requantization arithmetic and
+  final token-sampling Softmax
+
+```text
+Once upon a time, there was a little girl named Sarah. Sarah had a best sister and mum and gave her lots of toys. One day, Sarah and her mum went for a ride.
+
+"Sarah, it looks so fun!" said Sarah with a big smile.
+
+"Sure, just sit here," her mum said, "That's a very nice seat. I'll get you one."
+
+Sarah was so happy and she thanked her mum, and then they went off off together to find a special one. Sarah was excited to have her new toy back and her mum was so happy.
+
+Lily found a tiny red door. She wanted to move it. She walked up to the door and opened it with a smile on her face. She tried to pull the door open the door, but it was too heavy. The door was locked. Lily was scared and scared.
+
+Later the next day, Lily found a very beautiful purple car inside the garden. She wanted to open the door, but she could not. But then she got a persistent tutor to climb up. As she gaked the car up and the car started to move!
+
+Lily was so happy that she finally managed to lift
+
+Tom wanted to help his friend, Lily. They had a big card that they could use. They used some tape to make the card stick the card stick.
+"Look, Mom, Mom, this card for the letter!" Tom said. He put the card with the card and put the card stick it in the box. He gave it to Lily and said, "Let's open the box!"
+
+They put the card in the box and took the box. They found the card and the card stick and started to cut the card. They thought the card was very pretty and made a picture of the card.
+```
+
+These outputs are unedited. They are markedly more coherent than the early
+one-plane checkpoints below, but repetition and broken narrative transitions
+remain visible.
+
 ## Best strict checkpoint
 
 - Training: 1,500 additional teacher-free cross-entropy steps at the final

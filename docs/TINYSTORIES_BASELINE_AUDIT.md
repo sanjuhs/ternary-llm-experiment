@@ -186,15 +186,18 @@ The experiment will be reported as successful only if:
 Until those gates pass, “fully ternary” means an executed research hypothesis,
 not a solved replacement for floating-point GPT.
 
-The small-model survivor audit has now completed. Its best exhaustive result is
-the ReLU-hardened three-ternary-plane model at loss **2.518279** and perplexity
-**12.4072**. The exact two-bit binary-plane model plateaus at loss **4.251708**.
-Those results validate the discrete training machinery, but neither answers the
-capacity gate. The completed 27.4M float control reaches **1.344198** loss, and
-its ternary-weight/A16 conversion reaches **1.535463**. The strict
-ternary-QKV, integer-LUT-attention, three-plane-residual checkpoint reaches
-**2.303869** after 30k steps on exhaustive sequential validation. Preserving
-the exact 10k checkpoint improves that strict result to **2.240969**, but it
-still misses the first quality gate. The next matched clip, shared-scale,
-Softmax-1, ReLU, binary-QK, and integer-RMSNorm experiments target the measured
-attention-collapse and arithmetic-boundary failures one at a time.
+The complete refinement audit now has two final answers. The best quality
+endpoint uses dynamic token scales, ReLU, and integer RMSNorm and reaches
+**2.160526 loss / 8.6757 perplexity**. The mandatory hardware endpoint replaces
+those scales with factorizable per-head scales and reaches **2.250638 /
+9.4938**. Its packed export passes every ternary-operand check and its fixed
+samples are recognizably story-like, so the strict operand-graph gate passes.
+
+Two harder gates remain open. Three ternary residual refinement planes consume
+six physical bits per scalar; the exact two-bit binary-plane model still
+plateaus at **4.251708**. And the strict endpoint remains 0.906440 loss behind
+the 1.344198 float teacher. Fixed-point scale/requantization and the final
+sampling Softmax also remain declared implementation boundaries rather than a
+fused integer runtime. The next justified training comparison is a QuEST-style
+trust gradient and a residual-free or gated-residual architecture, followed by
+a matched return from three ternary planes to the two-plane storage target.

@@ -1,6 +1,6 @@
 # Ternary LLM experiment ledger and roadmap
 
-*Updated July 26, 2026*
+*Updated July 27, 2026*
 
 This is the compact, auditable answer to three questions:
 
@@ -22,17 +22,15 @@ TinyStories-33M checkpoint. The ternary-weight model scores approximately
 **0.565695 BPB**, only 2.2% worse than that released reference, although it
 remains 14.2% worse than its own matched float teacher.
 
-The best result with ternary weights and 4-bit residual activations is **2.1126**.
-The best result with a 2-bit attention representation is **2.1383**. A model with
-forced ternary Q/K/V is **2.289840**; adding the strict two-bit score and
-four-entry integer-LUT route gives **2.299876**. A model with one ternary code at
-every residual boundary now runs and generates, but is not competitive: the best
-strict result is **5.098914** (perplexity **163.8439**), versus 6.3798 before the
-progressive curriculum. The current best strict ternary-compute model instead
-uses three ternary residual refinement planes plus ternary weights/Q/K/V and a
-two-bit integer attention route; its exhaustive loss is **2.235370**
-(perplexity **9.34994**). Those three planes cost six physical code bits per
-residual scalar, so this is not an exact two-bit-storage result.
+The best exhaustive code-constrained quality endpoint now reaches
+**2.160526 loss / 8.6757 perplexity** with ternary weights/Q/K/V, two-bit
+integer attention, three ternary residual planes, ReLU, integer RMSNorm, and
+dynamic token scales. The mandatory factorizable-scale endpoint reaches
+**2.250638 / 9.4938** and passes all eleven packed ternary-operand checks. Its
+0.090112 quality cost is measured separately rather than hidden behind the
+dynamic-scale result. Three ternary planes cost six physical code bits per
+residual scalar, so neither is an exact two-bit-storage result; the exact
+two-bit binary-plane arm remains much worse at **4.251708** loss.
 
 ## What an INT32 accumulator really means
 
@@ -571,15 +569,26 @@ the integer-reference path. In its packed export, dynamic per-token QKV scales
 are now the only failed ternary-operand-contract check; this remains distinct
 from the mandatory factorizable-scale hardware endpoint below.
 
-Every later quality-stage handoff now compares its untouched input with the
+Every later quality-stage handoff compares its untouched input with the
 retained best checkpoint from both matched arms, preventing two regressions
-from displacing a better model. Because that rule may reject hardware-friendly
-shared scales, ReLU, or integer RMSNorm, the overnight chain also contains a
-separate mandatory strict-contract endpoint. It combines learned per-head QKV
-scales, ternary Q/K/V, the two-bit integer attention route, ReLU, and
-integer-reference RMSNorm. Publication is allowed only if the exported
-ternary-operand contract passes; its loss is reported separately from the
-quality winner.
+from displacing a better model. A separate mandatory strict-contract endpoint
+has now completed:
+
+| Strict endpoint stage | 200-batch loss | Exhaustive loss | Perplexity |
+|---|---:|---:|---:|
+| Step 2,000, float RMSNorm | 2.278716 | — | 9.7641 |
+| Step 4,000, float RMSNorm | 2.262977 | 2.250051 | 9.4882 |
+| Step 4,000, integer RMSNorm | — | **2.250638** | **9.4938** |
+
+The integer path differs from float RMSNorm by only **+0.000586**. Its export
+passes all eleven ternary-operand checks: learned factorizable per-head QKV
+scales, ternary Q/K/V, two-bit integer attention, three ternary residual
+planes, fixed Hadamard projection, ReLU, integer RMSNorm, and no floating
+rectifier, gate, or dropout bypass. It finishes **0.090112 loss** behind the
+dynamic-scale quality endpoint. End-to-end integer-reference status remains
+false because PyTorch still emulates fixed-point scale/requantization
+arithmetic and final token sampling uses Softmax. The run, comparison, and
+overnight summary passed SHA-256 and remote Hugging Face digest verification.
 
 The longer clip-3 control completed its predeclared training budget. Its
 matched validation trajectory through step 30,000 is:

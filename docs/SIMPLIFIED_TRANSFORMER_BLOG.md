@@ -513,9 +513,9 @@ That ReLU model is our best low-bit quality result so far. It still is not the
 finished ternary machine, because every token is allowed to choose a changing
 Q/K/V measuring scale. The final hardware test removes that freedom: it uses
 one stable scale per attention head, ternary Q/K/V, ReLU, tiny integer
-attention choices, and integer normalization. We will show its separate score
-even if it is worse. This keeps two claims honest: how well the model tells a
-story, and how completely its large inference operations fit a ternary chip.
+attention choices, and integer normalization. Its separate result appears
+below. This keeps two claims honest: how well the model tells a story, and how
+completely its large inference operations fit a ternary chip.
 
 We also replaced the ordinary RMSNorm calculation with an integer-reference
 version. Think of RMSNorm as the volume control before a layer: it measures how
@@ -525,6 +525,22 @@ That tiny improvement is effectively a tie, which is the useful result: this
 normalization step does not need floating-point arithmetic to preserve model
 quality. The quality model's remaining hardware mismatch is its
 input-dependent QKV scale, not RMSNorm.
+
+The final hardware test is now finished too. It replaces each token's changing
+Q/K/V measuring scale with one stable scale for each attention head. Its loss
+is **2.250638** and its perplexity is **9.4938**. That is 0.090112 worse than
+the best storyteller, but the packed model passes every large-operand rule:
+ternary weights and Q/K/V, tiny integer attention cards, ternary residual
+planes, simple ReLU, and integer normalization.
+
+There are two honest footnotes. First, three ternary residual planes take six
+physical bits per number, even though every plane uses only minus, zero, and
+plus. This is a ternary-compute model, not yet an exact two-bit-storage model.
+Second, the temporary sums must be wider so that hundreds of small products do
+not overflow, and the final random word choice still uses Softmax. A future
+ternary chip can keep the expensive matrix operands ternary and immediately
+round each wide sum back to the next small code; “wide accumulator” does not
+mean the next layer becomes floating point.
 
 We also asked whether Q and K could be even simpler: only minus or plus, with
 no zero card. That would make them binary, which a ternary chip can execute.

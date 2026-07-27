@@ -36,21 +36,21 @@ tokenizer, TinyStories validation stream, and 4,907,776 evaluated targets:
 | Ternary weights, ordinary activations | **1.535463** | **4.6435** |
 | Ternary weights, four-bit residual activations | **1.800118** | **6.0504** |
 | Ternary weights/Q/K/V, two-bit integer attention, three ternary residual planes, ReLU, integer RMSNorm (dynamic token scales) | **2.160526** | **8.6757** |
+| Strict ternary-operand endpoint: the same low-bit path with factorizable per-head QKV scales | **2.250638** | **9.4938** |
 
-The final row is the best exhaustive code-constrained result so far, but it is
-not float-quality parity or the strict hardware endpoint. Three ternary residual
-planes occupy six physical code bits per scalar, and dynamic per-token QKV
-scales are now the only failed check in its exported ternary-operand contract.
-The matched
+The dynamic-scale row is the best exhaustive code-constrained quality result;
+the final row is the separately trained hardware endpoint. Its packed export
+passes every ternary-operand-contract check, including factorizable QKV scales,
+ReLU, and integer RMSNorm. It is still not a fused end-to-end integer runtime:
+fixed-point requantization and final token-sampling Softmax remain explicit
+boundaries. Three ternary residual planes also occupy six physical code bits
+per scalar, so this is ternary compute rather than an exact two-bit residual
+storage result. The matched
 factorizable per-head-scale arm reaches 2.309650 loss, exposing a real 0.078748
 quality cost in the earlier GELU comparison. Replacing GELU with ReLU under a
 matched 4,000-step budget improves exhaustive loss by 0.070009. The active
-refinement chain therefore preserves two endpoints. A
-regression-safe quality branch may reject stricter components; a separate
-hardware branch must pass the exported ternary operand contract with
-factorizable per-head scales, ReLU, and integer RMSNorm. Neither branch claims
-a fused ASIC runtime until the remaining scalar requantization and sampling
-boundaries are implemented.
+refinement chain therefore preserves both endpoints rather than relabeling the
+better storyteller as hardware-ready.
 
 ## What is implemented
 
@@ -100,6 +100,8 @@ not claim a speedup without a fused device kernel.
   artifacts](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/residual-refinement-pilot)
 - [Matched dynamic-token and factorizable per-head QKV scale
   runs](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/tinystories-28m/runs)
+- [Strict ternary-operand endpoint, packed export, and exhaustive
+  metrics](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/tinystories-28m/runs/strict-contract-relu-rmsnorm)
 - [Complete tokenized TinyStories
   stream](https://huggingface.co/datasets/sanjuhs/ternary-tinystories-4096)
 

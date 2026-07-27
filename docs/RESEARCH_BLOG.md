@@ -1326,9 +1326,9 @@ word “constrained” needs care. Its large matrix weights, Q/K/V codes, attent
 routes, and three residual planes are low-bit, while its per-token QKV scales
 are still data-dependent. The export therefore correctly reports that the
 strict ternary-operand contract is not satisfied. The separate hardware branch
-will combine ReLU with learned factorizable head scales and integer-reference
-RMSNorm, and its loss will be reported independently rather than hidden behind
-the better quality-branch number.
+below combines ReLU with learned factorizable head scales and integer-reference
+RMSNorm, and reports its loss independently rather than hiding it behind the
+better quality-branch number.
 
 ### Integer RMSNorm preserves the quality result
 
@@ -1346,7 +1346,38 @@ The exhaustive change is **-0.000367**, effectively neutral and slightly
 favourable on this validation stream. This removes RMSNorm from the quality
 endpoint's list of floating-point exceptions. Its remaining failed
 ternary-operand-contract check is the data-dependent QKV scale; the strict
-hardware branch tests a factorizable per-head scale separately.
+hardware branch below tests a factorizable per-head scale separately.
+
+### The strict ternary-operand endpoint passes
+
+The separate hardware branch starts from the learned per-head-scale checkpoint
+and adapts it for 4,000 steps with ternary Q/K/V, all four integer attention
+codes, three ternary residual planes, fixed Hadamard mixing, ReLU, and the same
+teacher objectives. It improves monotonically on the matched validation gates:
+
+| Evaluation | Loss | Perplexity |
+|---|---:|---:|
+| Step 2,000, 200 batches | 2.278716 | 9.7641 |
+| Step 4,000, 200 batches | 2.262977 | 9.6117 |
+| Exhaustive, float RMSNorm | 2.250051 | 9.4882 |
+| Exhaustive, integer RMSNorm | **2.250638** | **9.4938** |
+
+Integer RMSNorm adds only **0.000586** loss on this stricter activation
+distribution. The packed export passes all eleven ternary-operand checks and
+contains 59 scaled-ternary tensors, eight fixed-point scale tensors, and eight
+readiness buffers. Attention does not collapse: at step 2,000 its four route
+codes occupy 86.39%, 7.61%, 4.13%, and 1.87% of valid positions, and the
+ternary weights are almost evenly divided among negative, zero, and positive
+codes.
+
+This result is a real endpoint, but it is not float parity. It scores 0.090112
+worse than the dynamic-token-scale quality model and 0.906440 worse than the
+ordinary float teacher baseline. Three ternary residual planes
+also require six physical code bits per scalar. Finally, the PyTorch reference
+still uses emulated fixed-point scale/requantization arithmetic and a final
+sampling Softmax. The correct claim is therefore **strict ternary matrix
+operands and persistent boundaries**, not “every temporary scalar is
+ternary.”
 
 ## Binary Q/K loses information that ternary Q/K needs
 
