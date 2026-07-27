@@ -120,47 +120,39 @@ evaluations, diagnostics, generations, metrics, and resolved configurations are
 in `residual-refinement-pilot/`. Multi-plane ternary models preserve ternary
 matrix operands but are not 1.58-bit-per-activation models.
 
-## Live 27.4M strict ternary control
+## Completed 27.4M low-bit endpoints
 
-The current strict control combines:
+All project rows below use the same 4,096-token tokenizer and exhaustive
+4,907,776-target validation stream:
 
-- packed ternary weights and ternary Q/K/V;
-- fixed-Hadamard projection;
-- three residual ternary planes;
-- four-code shifted attention scores;
-- a four-entry integer exponential lookup table;
-- two-bit normalized attention routes;
-- wider integer accumulators followed by requantization.
+| Representation | Validation loss | Perplexity |
+|---|---:|---:|
+| Float control | **1.344198** | **3.8351** |
+| Ternary weights, ordinary activations | **1.535463** | **4.6435** |
+| Ternary weights, four-bit residual activations | **1.800118** | **6.0504** |
+| Best quality endpoint: ternary Q/K/V, two-bit integer attention, three ternary residual planes, ReLU, integer RMSNorm, dynamic token scales | **2.160526** | **8.6757** |
+| Strict operand endpoint with factorizable per-head QKV scales | **2.250638** | **9.4938** |
 
-Its fixed clip-3 trajectory is still training to 30,000 steps:
+The matched refinement chain found:
 
-| Step | Validation loss | Perplexity | Zero routes | Attention entropy |
-|---:|---:|---:|---:|---:|
-| 2,000 | 2.418388 | 11.2278 | 79.62% | 2.3844 |
-| 4,000 | 2.358272 | 10.5727 | 82.86% | 2.2176 |
-| 6,000 | 2.304905 | 10.0232 | 84.68% | 2.1034 |
-| 8,000 | 2.268195 | 9.6619 | 85.77% | 2.0259 |
-| 10,000 | 2.250819 | 9.4955 | 86.25% | 1.9860 |
-| 12,000 | **2.250422** | **9.4917** | 87.24% | 1.9178 |
-| 14,000 | 2.256556 | 9.5501 | 87.51% | 1.8916 |
-| 16,000 | 2.280490 | 9.7815 | 87.75% | 1.8672 |
-| 18,000 | 2.292726 | 9.9019 | **87.96%** | **1.8620** |
+- clip 2 restores use of all four attention-route codes;
+- Softmax-1 is 0.010748 worse than ordinary integer Softmax;
+- ReLU improves exhaustive loss by 0.070009 versus matched GELU;
+- binary Q/K is 0.135944 worse than ternary Q/K;
+- integer RMSNorm changes quality loss by -0.000367 and strict loss by
+  +0.000586;
+- factorizable per-head scales cost 0.090112 loss versus the final
+  dynamic-token-scale quality model.
 
-Probability code 2 remains unused at clip 3, so the predeclared downstream
-experiment screens clips 1.5, 2.0, 2.5, and 3.0. It is followed by equal-budget
-per-token versus learned-head QKV scale arms, equal-budget integer-Softmax
-versus Softmax-1 arms, and equal-budget GELU versus ReLU arms. These are
-prospective experiments; the table above must not be read as their result.
-The 10k-to-12k loss improvement was only 0.000397, then the next three
-intervals regressed by 0.006134, 0.023934, and 0.012236 while residual NMSE
-rose to 0.02274. This establishes a plateau followed by material regression
-without changing or prematurely stopping the predeclared 30k control.
+The strict export passes all eleven ternary-operand checks. Its large learned
+matrix operands, Q/K/V, attention routes, and persistent residual boundaries
+are discrete and contain no floating rectifier, sigmoid gate, or dropout
+bypass. The run, comparison folders, and overnight summary have verified
+Git/LFS digests under `tinystories-28m/`.
 
-The exact step-10,000 checkpoint was preserved before its scheduled overwrite
-and will be published as a separately exhaustive, generated, exported, and
-audited run. New downstream arms automatically retain `best-checkpoint.pt`;
-each stage uses the best available saved checkpoint while retaining its final
-fixed-budget checkpoint for the matched comparison.
+Three ternary residual planes require six physical code bits per scalar. The
+exact two-bit binary-plane model reaches 4.251708 loss, so exact two-bit
+residual storage remains an open research goal rather than a solved result.
 
 ## Deployment artifact contract
 
@@ -174,9 +166,14 @@ New completed runs use `ternary-deployment-v2`:
 - the publisher audits the run, uploads it, enumerates the committed Hub files,
   and fails if any expected file is missing.
 
-The repository contains exact INT32 references for residual-plane/ternary
+The repository contains exact integer references for residual-plane/ternary
 linear products, ternary Q·K, two-plane Route·V, integer-LUT attention
-normalization, and fixed-point RMSNorm arithmetic. The RMSNorm reference is not
-yet wired through the full PyTorch model, and final token sampling remains a
-separate boundary. Therefore, a packed export proves its declared low-bit
-operands; it does not by itself prove a fused end-to-end ternary ASIC runtime.
+normalization, and fixed-point RMSNorm arithmetic. Integer RMSNorm is wired
+through the completed strict checkpoint and is quality-neutral. Wider
+accumulators do not force the next layer to FP32: their values are requantized
+at the next persistent boundary.
+
+The PyTorch reference still emulates fixed-point scale/requantization
+arithmetic, and final token sampling uses Softmax. Therefore, the strict export
+proves its declared ternary operands and persistent boundaries; it does not
+claim a fused end-to-end integer ASIC runtime.
