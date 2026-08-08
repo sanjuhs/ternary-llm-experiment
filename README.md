@@ -109,6 +109,19 @@ not claim a speedup without a fused device kernel.
 - [Complete tokenized TinyStories
   stream](https://huggingface.co/datasets/sanjuhs/ternary-tinystories-4096)
 
+## Frozen hardware proof of concept
+
+The strict 27.4M-parameter TinyStories deployment artifact can be compiled into
+checkpoint-specific ternary RTL. The reproducible proof of concept includes an actual
+frozen QKV row, programmable ternary and INT8 baselines, Icarus Verilog verification,
+Nangate45 Yosys/ABC synthesis, an architecture diagram, and explicitly labeled
+model-wide area/energy/throughput/cost scenarios.
+
+See [the hardware POC](hardware/README.md) and its
+[generated feasibility report](hardware/generated/reports/REPORT.md). The report is
+pre-layout evidence, not tape-out signoff, and records the remaining fixed-point
+requantization and final sampling boundaries.
+
 Generated data and checkpoints remain ignored by Git; the public Hub repositories
 hold the experiment checkpoints and reproducible token streams.
 
