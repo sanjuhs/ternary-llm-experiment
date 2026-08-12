@@ -32,6 +32,9 @@ import websockets
 DEFAULT_BASE_URL = "https://sanjuhs123--minicpm-omni-demo.modal.run"
 DEFAULT_SYSTEM_PROMPT = "You are a helpful, natural English voice assistant."
 CHUNK_BYTES = 16_000 * 4  # one second of mono 16 kHz float32 PCM
+BINARY_AUDIO_MAGIC = b"MCPM"
+BINARY_AUDIO_HEADER_BYTES = 8
+MAX_SPEAKING_UNITS = 10
 
 
 def ssl_context() -> ssl.SSLContext:
@@ -78,6 +81,8 @@ async def check_duplex(
     events: list[str] = []
     results: list[dict[str, object]] = []
     generated_audio = bytearray()
+    binary_audio_v1 = False
+    consecutive_speaking = 0
 
     async with websockets.connect(
         websocket_url(base_url),
@@ -94,12 +99,14 @@ async def check_duplex(
             if isinstance(kind, str):
                 events.append(kind)
             if kind == "queue_done" and not prepare_sent:
+                capabilities = message.get("capabilities") or {}
+                binary_audio_v1 = bool(capabilities.get("binary_audio_v1"))
                 await socket.send(
                     json.dumps(
                         {
                             "type": "prepare",
                             "system_prompt": system_prompt,
-                            "config": {"length_penalty": 1.05},
+                            "config": {"length_penalty": 0.95},
                         }
                     )
                 )
@@ -111,14 +118,20 @@ async def check_duplex(
 
         for index, chunk in enumerate(audio_chunks, start=1):
             unit_started = time.monotonic()
-            await socket.send(
-                json.dumps(
-                    {
-                        "type": "audio_chunk",
-                        "audio_base64": base64.b64encode(chunk).decode("ascii"),
-                    }
+            force_listen = consecutive_speaking >= MAX_SPEAKING_UNITS
+            if binary_audio_v1:
+                flags = 1 if force_listen else 0
+                await socket.send(BINARY_AUDIO_MAGIC + bytes((1, flags, 0, 0)) + chunk)
+            else:
+                await socket.send(
+                    json.dumps(
+                        {
+                            "type": "audio_chunk",
+                            "audio_base64": base64.b64encode(chunk).decode("ascii"),
+                            "force_listen": force_listen,
+                        }
+                    )
                 )
-            )
             while True:
                 message = json.loads(await asyncio.wait_for(socket.recv(), timeout=90))
                 if message.get("type") == "result":
@@ -134,9 +147,13 @@ async def check_duplex(
                     "cost_tts_ms": message.get("cost_tts_ms"),
                     "is_listen": message.get("is_listen"),
                     "n_tokens": message.get("n_tokens"),
+                    "current_time": message.get("current_time"),
+                    "end_of_turn": message.get("end_of_turn"),
+                    "kv_cache_length": message.get("kv_cache_length"),
                     "text": (message.get("text") or "")[:120],
                 }
             )
+            consecutive_speaking = 0 if message.get("is_listen") else consecutive_speaking + 1
             encoded_audio = message.get("audio_data")
             if isinstance(encoded_audio, str) and encoded_audio:
                 generated_audio.extend(base64.b64decode(encoded_audio))
@@ -164,6 +181,7 @@ async def check_duplex(
         write_float32_wav(audio_output_wav, bytes(generated_audio), sample_rate=24_000)
     return {
         "events": events,
+        "binary_audio_v1": binary_audio_v1,
         "prepared": "prepared" in events,
         "stopped": "stopped" in events,
         "elapsed_ms": round((time.monotonic() - started) * 1000, 1),

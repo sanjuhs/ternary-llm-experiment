@@ -21,40 +21,43 @@ Use headphones for the duplex experiments. The upstream project currently
 documents echo-cancellation problems that can interfere with interruption when
 speakers feed back into the microphone.
 
-Verified on 2026-08-10:
+Verified on 2026-08-12:
 
-- Cold `/health` request reached HTTP 200 in 49.94 seconds.
+- Cold `/health` request reached HTTP 200 in roughly one minute.
 - `/`, `/audio_duplex`, `/omni`, and `/health` all returned HTTP 200.
 - A real WSS lifecycle reached `queue_done` -> `prepared` -> `stopped` in 2.72s.
-- Eight one-second chunks of OpenBMB's sample audio produced a 489.2ms mean and
-  904.4ms maximum server `cost_all_ms`; all eight stayed below the one-second
-  real-time compute budget.
-- Sequential test-client round trips averaged 1.15s because they include network
-  overhead and intentionally wait for each reply. The browser streams its input
-  every second without that artificial request/reply serialization.
+- A ten-minute, 60-question cake conversation completed all 600 one-second audio
+  units without a disconnect. BF16 answered 60/60 question slots, reached 49/60
+  keyword-quality signals, and kept every server unit below the one-second
+  real-time budget (510.2ms p95, 621.1ms maximum).
+- The guarded ternary deployment passed the same ten-minute fixture: 600/600
+  units, 60/60 answered slots, 50/60 keyword-quality signals, zero duplicate
+  turns, and 99.5% of server units below one second (915.1ms p95).
+- Context compaction held the BF16 and guarded-ternary KV caches to 3,419 and
+  3,539 tokens respectively, below the configured 4,000-token high watermark.
 
 ## GPU choice
 
-The model fits RTX PRO 6000 Blackwell, H100, and L40S. H100 SXM is the fastest
-conservative choice because its 3.35 TB/s HBM3 bandwidth is materially above
-RTX PRO 6000's 1.6 TB/s GDDR7 bandwidth, and its Hopper kernels have mature
-PyTorch/Triton support. Modal can also upgrade an H100 request to H200 at the
-H100 price. Therefore this source requests `H100`.
-
-The currently live legacy endpoint remains on L40S with compilation disabled.
-The optimized deployment in this folder enables compilation and persistent
-kernel caching, but Modal rejected activation of H100, RTX PRO 6000, and L40S
-functions because this account has no payment method. Add one in Modal billing,
-then rerun `modal deploy`; failed deploy attempts did not replace the working
-legacy endpoint.
+The live BF16 and guarded-ternary endpoints request Modal's `L40S`. This is not
+RunPod and it is not CPU inference: the language model, audio encoder, vision
+encoder, TTS model, and vocoder are placed on CUDA. L40S is already comfortably
+real-time for BF16 and remains real-time for the current fake-quant guarded
+ternary experiment. A faster H100/H200 is unnecessary for this one-user demo;
+an RTX PRO 6000 is not presently a Modal GPU option used by this deployment.
 
 ## Performance configuration
 
 - BF16 model weights (no quality-lowering quantization).
 - PyTorch 2.8 and CUDA 12.8.
 - SDPA attention, matching the robust path in the current official installer.
-- `torch.compile` enabled with the official real-duplex warmup.
-- Persistent Inductor/Triton cache in `minicpm-omni-compile-cache`.
+- Eager SDPA by default: it is real-time and avoids a source-keyed 10–16 minute
+  compile warmup after reliability patches. Set `MINICPM_ENABLE_COMPILE=1` only
+  for dedicated compilation experiments.
+- Binary one-second Float32 PCM frames with a JSON/base64 compatibility fallback.
+- Context-aware sliding at 4,000 KV tokens, compacting to 3,500 while retaining
+  the latest 180 audio units plus up to 500 tokens of older generated context.
+- A ten-unit maximum continuous speaking run, after which the server forces a
+  return to listening/end-of-turn behavior.
 - One user / one worker / one GPU, avoiding concurrency interference.
 - 15-minute idle scale-down. A cold request reloads and warms the model.
 
@@ -75,14 +78,22 @@ python modal_minicpm_omni/smoke_test.py
 python modal_minicpm_omni/smoke_test.py --routes-only
 python modal_minicpm_omni/smoke_test.py --routes-only \
   --record-jsonl modal_minicpm_omni/monitoring/keepalive.jsonl
+python modal_minicpm_omni/build_cake_fixture.py
+python -m modal_minicpm_omni.long_session_test \
+  --base-url https://sanjuhs123--minicpm-omni-demo.modal.run \
+  --label bf16-production
 python modal_minicpm_omni/monitor_report.py \
   modal_minicpm_omni/monitoring/keepalive.jsonl --minimum-hours 5
 ```
 
 `smoke_test.py` verifies the public routes and the complete WSS queue/prepare/
-stop lifecycle. `--routes-only` is safe for frequent keepalives because it does
-not claim the app's single duplex worker. Pass mono 16 kHz float32 PCM with
-`--audio-f32` to measure the server's per-unit real-time budget.
+stop lifecycle, including binary-audio capability negotiation. `--routes-only`
+is safe for frequent keepalives because it does not claim the app's single
+duplex worker. Pass mono 16 kHz float32 PCM with `--audio-f32` to measure the
+server's per-unit real-time budget. `build_cake_fixture.py` creates an exact
+600-second/60-question fixture, and `long_session_test.py` measures delivery,
+context growth, sliding events, end-of-turn behavior, transport gaps, latency,
+duplicate turns, and simple question-response quality signals.
 `--record-jsonl` preserves every timestamped success or failure. After the
 monitoring window, `monitor_report.py` proves its duration, checks for gaps over
 179 seconds (one second inside the live deployment's three-minute scale-down
@@ -114,7 +125,7 @@ start; refresh when `/health` is ready.
 ## Source pin
 
 The demo is pinned to OpenBMB/MiniCPM-o-Demo revision
-`d0a002093615b7f1d4d0f87a03fc01cb39bef3f6` (2026-08-05). This keeps the
+`b45ce889c5086d506434f4acc2e2b59ff7191bff` (2026-05-20). This keeps the
 experiment reproducible and prevents a later upstream push from silently
 changing the deployed system. The image also works around that revision's
 temporary `librosa` dependency-resolution conflict while retaining its newer,

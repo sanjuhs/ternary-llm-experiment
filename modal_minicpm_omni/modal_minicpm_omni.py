@@ -13,19 +13,28 @@ from pathlib import Path
 import modal
 
 TERNARY_CANARY = os.environ.get("MINICPM_TERNARY_CANARY") == "1"
+RELIABILITY_CANARY = os.environ.get("MINICPM_RELIABILITY_CANARY") == "1"
 TERNARY_POLICY = (
     os.environ.get("MINICPM_TERNARY_POLICY", "super-ternary-all") if TERNARY_CANARY else ""
 )
 GUARDED_TERNARY = TERNARY_POLICY == "guarded-mixed-v1"
 if GUARDED_TERNARY:
-    APP_NAME = "minicpm-omni-45-guarded-ternary"
-    WEB_LABEL = "minicpm-omni-guarded-ternary"
+    APP_NAME = (
+        "minicpm-omni-45-guarded-reliability-canary"
+        if RELIABILITY_CANARY
+        else "minicpm-omni-45-guarded-ternary"
+    )
+    WEB_LABEL = (
+        "minicpm-omni-guarded-reliability-canary"
+        if RELIABILITY_CANARY
+        else "minicpm-omni-guarded-ternary"
+    )
 elif TERNARY_CANARY:
     APP_NAME = "minicpm-omni-45-super-ternary"
     WEB_LABEL = "minicpm-omni-super-ternary"
 else:
-    APP_NAME = "minicpm-omni-45"
-    WEB_LABEL = "minicpm-omni-demo"
+    APP_NAME = "minicpm-omni-45-reliability-canary" if RELIABILITY_CANARY else "minicpm-omni-45"
+    WEB_LABEL = "minicpm-omni-reliability-canary" if RELIABILITY_CANARY else "minicpm-omni-demo"
 HF_SECRET_NAME = "huggingface-token"
 MODEL_VOLUME_NAME = "minicpm-omni-cache"
 TERNARY_VOLUME_NAME = "minicpm-omni-super-ternary-cache"
@@ -118,6 +127,11 @@ demo_image = (
         copy=True,
     )
     .add_local_file(
+        local_path="modal_minicpm_omni/patches/patch_duplex_reliability.py",
+        remote_path="/tmp/patch_duplex_reliability.py",
+        copy=True,
+    )
+    .add_local_file(
         local_path="src/ternary_llm/minicpmo_canary.py",
         remote_path="/app/ternary_canary_runtime.py",
         copy=True,
@@ -129,6 +143,7 @@ demo_image = (
     )
     .run_commands(
         "python /tmp/patch_turnbased_presets.py",
+        "python /tmp/patch_duplex_reliability.py",
         "python /tmp/patch_ternary_canary.py",
     )
     .env(
@@ -143,6 +158,14 @@ demo_image = (
             "MINICPM_TERNARY_CANARY_POLICY": TERNARY_POLICY,
             "MINICPM_TERNARY_CANARY": "1" if TERNARY_CANARY else "0",
             "MINICPM_TERNARY_THRESHOLD": "0.5",
+            # Preserve the latest three minutes of one-second duplex units and
+            # compact older generated text into a bounded 500-token context.
+            "MINICPM_DUPLEX_SLIDING_WINDOW_MODE": "context",
+            "MINICPM_DUPLEX_CONTEXT_MAX_UNITS": "180",
+            "MINICPM_DUPLEX_PREVIOUS_MAX_TOKENS": "500",
+            "MINICPM_DUPLEX_WINDOW_HIGH_TOKENS": "4000",
+            "MINICPM_DUPLEX_WINDOW_LOW_TOKENS": "3500",
+            "MINICPM_DUPLEX_MAX_SPEAKING_UNITS": "10",
             "MINICPM_TERNARY_ARTIFACT_DIR": (
                 "/ternary/super-ternary-all-group512-v2"
                 if TERNARY_CANARY and not GUARDED_TERNARY
@@ -251,12 +274,11 @@ def _write_demo_config() -> None:
             "worker_base_port": WORKER_PORT,
             "max_queue_size": 8,
             "request_timeout": 600.0,
-            # The fully ternarized failure canary can no longer reach the
-            # upstream audio boundary during its compile warmup, leaving the
-            # worker stuck on Triton unit 0/10.  Start that isolated canary in
-            # eager mode so its degraded runtime can still be measured.  The
-            # production BF16 control keeps the compiled fast path.
-            "compile": not bool(os.environ.get("MINICPM_TERNARY_CANARY_POLICY")),
+            # Eager SDPA is already real-time on L40S and starts in about a
+            # minute.  The compiled path requires a source-keyed 10–16 minute
+            # warmup after patches, so keep it explicit rather than the live
+            # default.  Set MINICPM_ENABLE_COMPILE=1 only for dedicated tests.
+            "compile": os.environ.get("MINICPM_ENABLE_COMPILE") == "1",
             "data_dir": "data",
             "eta_chat_s": 15.0,
             "eta_streaming_s": 20.0,
