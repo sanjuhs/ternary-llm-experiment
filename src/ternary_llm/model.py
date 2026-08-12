@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import asdict
+import math
+from dataclasses import asdict, replace
 from typing import Any
 
 import torch
@@ -10,12 +11,20 @@ from torch import Tensor, nn
 from ternary_llm.config import Mode, ModelConfig
 from ternary_llm.projection import normalized_hadamard
 from ternary_llm.quantization import (
+    binarize_activation_with_learned_scale,
+    binary_activation_codes,
     code_histogram,
+    integer_rms_norm_reference,
+    progressive_activation_codes,
     quantize_activation,
     quantize_attention,
     quantize_projected_activation,
     requires_coat_calibration,
+    residual_refinement_activation_codes,
+    ternarize_activation,
+    ternarize_activation_with_learned_scale,
     ternarize_weight,
+    ternary_activation_codes,
     uses_activation_projection,
     uses_quantized_activations,
     uses_ternary_weights,
@@ -31,6 +40,9 @@ class TernaryLinear(nn.Module):
         mode: Mode,
         weight_threshold: float,
         activation_threshold: float,
+        activation_levels: int,
+        activation_encoding: str,
+        activation_planes: int,
         population_lanes: int,
     ) -> None:
         super().__init__()
@@ -38,13 +50,22 @@ class TernaryLinear(nn.Module):
         self.mode = mode
         self.weight_threshold = weight_threshold
         self.activation_threshold = activation_threshold
+        self.activation_levels = activation_levels
+        self.activation_encoding = activation_encoding
+        self.activation_planes = activation_planes
         self.population_lanes = population_lanes
         nn.init.normal_(self.weight, mean=0.0, std=0.02)
 
     def forward(self, inputs: Tensor) -> Tensor:
         if uses_quantized_activations(self.mode):
             inputs = quantize_activation(
-                inputs, self.mode, self.activation_threshold, lanes=self.population_lanes
+                inputs,
+                self.mode,
+                self.activation_threshold,
+                lanes=self.population_lanes,
+                levels=self.activation_levels,
+                encoding=self.activation_encoding,
+                planes=self.activation_planes,
             )
         weight = self.weight
         if uses_ternary_weights(self.mode):
@@ -60,7 +81,11 @@ class TernaryRMSNorm(nn.Module):
         mode: Mode,
         weight_threshold: float,
         activation_threshold: float,
+        activation_levels: int,
+        activation_encoding: str,
+        activation_planes: int,
         population_lanes: int,
+        rms_norm_quantization: str,
         eps: float = 1e-5,
     ) -> None:
         super().__init__()
@@ -68,7 +93,11 @@ class TernaryRMSNorm(nn.Module):
         self.mode = mode
         self.weight_threshold = weight_threshold
         self.activation_threshold = activation_threshold
+        self.activation_levels = activation_levels
+        self.activation_encoding = activation_encoding
+        self.activation_planes = activation_planes
         self.population_lanes = population_lanes
+        self.rms_norm_quantization = rms_norm_quantization
         self.eps = eps
 
     def forward(self, inputs: Tensor) -> Tensor:
@@ -76,10 +105,26 @@ class TernaryRMSNorm(nn.Module):
         weight = self.weight
         if uses_ternary_weights(self.mode):
             weight = ternarize_weight(weight, self.weight_threshold)
-        output = normalized * weight
+        surrogate = normalized * weight
+        if self.rms_norm_quantization == "integer_reference":
+            exact, _ = integer_rms_norm_reference(
+                inputs,
+                self.weight,
+                weight_threshold=self.weight_threshold,
+                eps=self.eps,
+            )
+            output = surrogate + (exact - surrogate).detach()
+        else:
+            output = surrogate
         if uses_quantized_activations(self.mode):
             output = quantize_activation(
-                output, self.mode, self.activation_threshold, lanes=self.population_lanes
+                output,
+                self.mode,
+                self.activation_threshold,
+                lanes=self.population_lanes,
+                levels=self.activation_levels,
+                encoding=self.activation_encoding,
+                planes=self.activation_planes,
             )
         return output
 
@@ -94,34 +139,226 @@ class CausalSelfAttention(nn.Module):
             "mode": mode,
             "weight_threshold": config.weight_threshold,
             "activation_threshold": config.activation_threshold,
+            "activation_levels": config.activation_levels,
+            "activation_encoding": config.activation_encoding,
+            "activation_planes": config.activation_planes,
             "population_lanes": config.population_lanes if mode == "population_ternary" else 1,
         }
         self.qkv = TernaryLinear(config.d_model, 3 * config.d_model, **linear_args)
         self.projection = TernaryLinear(config.d_model, config.d_model, **linear_args)
         self.mode = mode
+        self.weight_threshold = config.weight_threshold
         self.activation_threshold = config.activation_threshold
+        self.activation_levels = config.activation_levels
+        self.activation_encoding = config.activation_encoding
+        self.activation_planes = config.activation_planes
         self.population_lanes = config.population_lanes if mode == "population_ternary" else 1
         self.attention_quantization = config.attention_quantization
+        self.attention_normalization = config.attention_normalization
         self.attention_clip = config.attention_clip
         self.attention_threshold = config.attention_threshold
+        self.qkv_quantization = config.qkv_quantization
+        self.qkv_scale_granularity = config.qkv_scale_granularity
+        self.attention_rectification = config.attention_rectification
+        self.attention_gate = config.attention_gate
+        if (
+            self.qkv_quantization in {"ternary", "binary_qk_ternary_v"}
+            and self.qkv_scale_granularity == "learned_head"
+        ):
+            self.qkv_log_scales = nn.Parameter(
+                torch.full(
+                    (3, self.n_heads),
+                    math.log(config.qkv_scale_initial),
+                )
+            )
+        else:
+            self.register_parameter("qkv_log_scales", None)
+        if self.attention_rectification == "qvit":
+            parameter_shape = (1, self.n_heads, 1, self.head_size)
+            self.q_gamma = nn.Parameter(torch.ones(parameter_shape))
+            self.q_beta = nn.Parameter(torch.zeros(parameter_shape))
+            self.k_gamma = nn.Parameter(torch.ones(parameter_shape))
+            self.k_beta = nn.Parameter(torch.zeros(parameter_shape))
+        else:
+            self.register_parameter("q_gamma", None)
+            self.register_parameter("q_beta", None)
+            self.register_parameter("k_gamma", None)
+            self.register_parameter("k_beta", None)
+        if self.attention_gate != "none":
+            self.gate_weight = nn.Parameter(torch.zeros(self.n_heads, self.head_size))
+            initial_logit = math.log(
+                config.attention_gate_initial / (1.0 - config.attention_gate_initial)
+            )
+            self.gate_bias = nn.Parameter(torch.full((self.n_heads,), initial_logit))
+        else:
+            self.register_parameter("gate_weight", None)
+            self.register_parameter("gate_bias", None)
         self.last_attention_stats: dict[str, float] = {}
+        self.capture_distillation = False
+        self.last_q: Tensor | None = None
+        self.last_k: Tensor | None = None
+        self.last_probabilities: Tensor | None = None
+        self.last_qkv_scale_stats: dict[str, float] = {}
+
+    @staticmethod
+    def _standardize(tensor: Tensor) -> Tensor:
+        centered = tensor - tensor.mean(dim=-1, keepdim=True)
+        return centered * torch.rsqrt(
+            centered.square().mean(dim=-1, keepdim=True) + 1e-5
+        )
+
+    def _rectify_qk(self, q: Tensor, k: Tensor) -> tuple[Tensor, Tensor]:
+        if self.attention_rectification != "qvit":
+            return q, k
+        if any(
+            parameter is None
+            for parameter in (self.q_gamma, self.q_beta, self.k_gamma, self.k_beta)
+        ):
+            raise AssertionError("Q-ViT rectification parameters are missing")
+        q = self._standardize(q) * self.q_gamma + self.q_beta
+        k = self._standardize(k) * self.k_gamma + self.k_beta
+        return q, k
+
+    def _quantize_qkv(
+        self,
+        q: Tensor,
+        k: Tensor,
+        v: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor, dict[str, Tensor]]:
+        code_tensors: dict[str, Tensor] = {}
+        if self.qkv_quantization in {"ternary", "binary_qk_ternary_v"}:
+            if self.qkv_scale_granularity == "learned_head":
+                if self.qkv_log_scales is None:
+                    raise AssertionError("learned QKV scales are missing")
+                quantized_tensors = []
+                scale_stats = {}
+                for index, (name, tensor) in enumerate((("q", q), ("k", k), ("v", v))):
+                    scale = self.qkv_log_scales[index].exp().view(
+                        1,
+                        self.n_heads,
+                        1,
+                        1,
+                    )
+                    if (
+                        self.qkv_quantization == "binary_qk_ternary_v"
+                        and name in {"q", "k"}
+                    ):
+                        quantized, codes = binarize_activation_with_learned_scale(
+                            tensor,
+                            scale,
+                        )
+                    else:
+                        quantized, codes = ternarize_activation_with_learned_scale(
+                            tensor,
+                            scale,
+                            self.activation_threshold,
+                        )
+                    quantized_tensors.append(quantized)
+                    code_tensors[name] = codes
+                    detached_scale = scale.detach()
+                    scale_stats[f"{name}_scale_mean"] = float(
+                        detached_scale.mean().item()
+                    )
+                    scale_stats[f"{name}_scale_min"] = float(
+                        detached_scale.min().item()
+                    )
+                    scale_stats[f"{name}_scale_max"] = float(
+                        detached_scale.max().item()
+                    )
+                self.last_qkv_scale_stats = scale_stats
+                return (*quantized_tensors, code_tensors)
+            for name, tensor in (("q", q), ("k", k), ("v", v)):
+                if (
+                    self.qkv_quantization == "binary_qk_ternary_v"
+                    and name in {"q", "k"}
+                ):
+                    codes, _ = binary_activation_codes(tensor)
+                else:
+                    codes, _ = ternary_activation_codes(
+                        tensor,
+                        self.activation_threshold,
+                    )
+                code_tensors[name] = codes
+            self.last_qkv_scale_stats = {}
+            if self.qkv_quantization == "binary_qk_ternary_v":
+                q_codes, q_scale = binary_activation_codes(q)
+                k_codes, k_scale = binary_activation_codes(k)
+                v_codes, v_scale = ternary_activation_codes(
+                    v,
+                    self.activation_threshold,
+                )
+                return (
+                    q + (q_codes * q_scale - q).detach(),
+                    k + (k_codes * k_scale - k).detach(),
+                    v + (v_codes * v_scale - v).detach(),
+                    code_tensors,
+                )
+            return (
+                ternarize_activation(q, self.activation_threshold),
+                ternarize_activation(k, self.activation_threshold),
+                ternarize_activation(v, self.activation_threshold),
+                code_tensors,
+            )
+        if uses_quantized_activations(self.mode):
+            q = quantize_activation(
+                q,
+                self.mode,
+                self.activation_threshold,
+                lanes=self.population_lanes,
+                levels=self.activation_levels,
+                encoding=self.activation_encoding,
+                planes=self.activation_planes,
+            )
+            k = quantize_activation(
+                k,
+                self.mode,
+                self.activation_threshold,
+                lanes=self.population_lanes,
+                levels=self.activation_levels,
+                encoding=self.activation_encoding,
+                planes=self.activation_planes,
+            )
+            v = quantize_activation(
+                v,
+                self.mode,
+                self.activation_threshold,
+                lanes=self.population_lanes,
+                levels=self.activation_levels,
+                encoding=self.activation_encoding,
+                planes=self.activation_planes,
+            )
+        return q, k, v, code_tensors
+
+    def _attention_gate(self, inputs: Tensor) -> tuple[Tensor | None, Tensor | None]:
+        if self.attention_gate == "none":
+            return None, None
+        if self.gate_weight is None or self.gate_bias is None:
+            raise AssertionError("attention gate parameters are missing")
+        batch, length, _ = inputs.shape
+        head_inputs = inputs.view(
+            batch,
+            length,
+            self.n_heads,
+            self.head_size,
+        ).permute(0, 2, 1, 3)
+        gate_inputs = ternarize_activation(head_inputs, self.activation_threshold)
+        gate_weight = ternarize_weight(self.gate_weight, self.weight_threshold)
+        logits = (gate_inputs * gate_weight.view(1, self.n_heads, 1, -1)).sum(dim=-1)
+        logits = logits + self.gate_bias.view(1, self.n_heads, 1)
+        probabilities = torch.sigmoid(logits)
+        if self.attention_gate == "binary":
+            codes = (probabilities.detach() >= 0.5).to(probabilities.dtype)
+            probabilities = probabilities + (codes - probabilities).detach()
+            return probabilities, codes
+        return probabilities, None
 
     def forward(self, inputs: Tensor) -> Tensor:
         batch, length, channels = inputs.shape
         qkv = self.qkv(inputs)
         qkv = qkv.view(batch, length, 3, self.n_heads, self.head_size)
         q, k, v = qkv.permute(2, 0, 3, 1, 4).unbind(dim=0)
-
-        if uses_quantized_activations(self.mode):
-            q = quantize_activation(
-                q, self.mode, self.activation_threshold, lanes=self.population_lanes
-            )
-            k = quantize_activation(
-                k, self.mode, self.activation_threshold, lanes=self.population_lanes
-            )
-            v = quantize_activation(
-                v, self.mode, self.activation_threshold, lanes=self.population_lanes
-            )
+        q, k = self._rectify_qk(q, k)
+        q, k, v, qkv_codes = self._quantize_qkv(q, k, v)
 
         scores = q @ k.transpose(-2, -1) / self.head_size**0.5
         valid = torch.ones(
@@ -133,9 +370,15 @@ class CausalSelfAttention(nn.Module):
             scores,
             valid,
             scheme=self.attention_quantization,
+            normalization=self.attention_normalization,
             clip=self.attention_clip,
             threshold=self.attention_threshold,
         )
+        gate, gate_codes = self._attention_gate(inputs)
+        if self.capture_distillation:
+            self.last_q = q
+            self.last_k = k
+            self.last_probabilities = probabilities
         if not self.training:
             diagnostic_mask = valid.to(torch.float32).view(1, 1, length, length)
             diagnostic_count = diagnostic_mask.sum() * batch * self.n_heads
@@ -146,6 +389,12 @@ class CausalSelfAttention(nn.Module):
                 ).sum(dim=-1)
                 stats = {
                     "entropy": float(entropy.mean().item()),
+                    "attention_mass_mean": float(
+                        probabilities.sum(dim=-1).mean().item()
+                    ),
+                    "no_update_mass_mean": float(
+                        (1.0 - probabilities.sum(dim=-1)).mean().item()
+                    ),
                     "zero_fraction": float(
                         (
                             (probabilities == 0).to(torch.float32)
@@ -164,15 +413,30 @@ class CausalSelfAttention(nn.Module):
                             / diagnostic_count.item()
                         )
                 if probability_codes is not None:
-                    maximum = 1 if self.attention_quantization == "prob_binary" else 3
+                    maximum = (
+                        1
+                        if self.attention_quantization
+                        in {"prob_binary", "score_lut_prob_binary"}
+                        else 3
+                    )
                     for code in range(maximum + 1):
                         stats[f"probability_code_{code}_fraction"] = float(
                             (
                                 (probability_codes == code).to(torch.float32)
                                 * diagnostic_mask
                             ).sum().item()
-                            / diagnostic_count.item()
+                                / diagnostic_count.item()
                         )
+                for name, codes in qkv_codes.items():
+                    for code, label in ((-1, "negative"), (0, "zero"), (1, "positive")):
+                        stats[f"{name}_{label}_fraction"] = float(
+                            (codes == code).to(torch.float32).mean().item()
+                        )
+                stats.update(self.last_qkv_scale_stats)
+                if gate is not None:
+                    stats["gate_mean"] = float(gate.mean().item())
+                if gate_codes is not None:
+                    stats["gate_open_fraction"] = float(gate_codes.mean().item())
                 self.last_attention_stats = stats
         probabilities = F.dropout(
             probabilities,
@@ -180,11 +444,19 @@ class CausalSelfAttention(nn.Module):
             training=self.training,
         )
         attended = probabilities @ v
+        if gate is not None:
+            attended = attended * gate.unsqueeze(-1)
         attended = attended.transpose(1, 2).contiguous().view(batch, length, channels)
         output = self.projection(attended)
         if uses_quantized_activations(self.mode):
             output = quantize_activation(
-                output, self.mode, self.activation_threshold, lanes=self.population_lanes
+                output,
+                self.mode,
+                self.activation_threshold,
+                lanes=self.population_lanes,
+                levels=self.activation_levels,
+                encoding=self.activation_encoding,
+                planes=self.activation_planes,
             )
         return output
 
@@ -197,6 +469,9 @@ class FeedForward(nn.Module):
             "mode": mode,
             "weight_threshold": config.weight_threshold,
             "activation_threshold": config.activation_threshold,
+            "activation_levels": config.activation_levels,
+            "activation_encoding": config.activation_encoding,
+            "activation_planes": config.activation_planes,
             "population_lanes": config.population_lanes if mode == "population_ternary" else 1,
         }
         self.up = TernaryLinear(config.d_model, hidden_size, **linear_args)
@@ -204,19 +479,39 @@ class FeedForward(nn.Module):
         self.dropout = nn.Dropout(config.dropout)
         self.mode = mode
         self.activation_threshold = config.activation_threshold
+        self.activation_levels = config.activation_levels
+        self.activation_encoding = config.activation_encoding
+        self.activation_planes = config.activation_planes
         self.population_lanes = config.population_lanes if mode == "population_ternary" else 1
+        self.feed_forward_activation = config.feed_forward_activation
 
     def forward(self, inputs: Tensor) -> Tensor:
-        hidden = F.gelu(self.up(inputs), approximate="tanh")
+        hidden = self.up(inputs)
+        if self.feed_forward_activation == "relu":
+            hidden = F.relu(hidden)
+        else:
+            hidden = F.gelu(hidden, approximate="tanh")
         if uses_quantized_activations(self.mode):
             hidden = quantize_activation(
-                hidden, self.mode, self.activation_threshold, lanes=self.population_lanes
+                hidden,
+                self.mode,
+                self.activation_threshold,
+                lanes=self.population_lanes,
+                levels=self.activation_levels,
+                encoding=self.activation_encoding,
+                planes=self.activation_planes,
             )
         output = self.down(hidden)
         output = self.dropout(output)
         if uses_quantized_activations(self.mode):
             output = quantize_activation(
-                output, self.mode, self.activation_threshold, lanes=self.population_lanes
+                output,
+                self.mode,
+                self.activation_threshold,
+                lanes=self.population_lanes,
+                levels=self.activation_levels,
+                encoding=self.activation_encoding,
+                planes=self.activation_planes,
             )
         return output
 
@@ -228,7 +523,11 @@ class TransformerBlock(nn.Module):
             "mode": mode,
             "weight_threshold": config.weight_threshold,
             "activation_threshold": config.activation_threshold,
+            "activation_levels": config.activation_levels,
+            "activation_encoding": config.activation_encoding,
+            "activation_planes": config.activation_planes,
             "population_lanes": config.population_lanes if mode == "population_ternary" else 1,
+            "rms_norm_quantization": config.rms_norm_quantization,
         }
         self.attention_norm = TernaryRMSNorm(config.d_model, **norm_args)
         self.attention = CausalSelfAttention(config, mode)
@@ -236,6 +535,9 @@ class TransformerBlock(nn.Module):
         self.feed_forward = FeedForward(config, mode)
         self.mode = mode
         self.activation_threshold = config.activation_threshold
+        self.activation_levels = config.activation_levels
+        self.activation_encoding = config.activation_encoding
+        self.activation_planes = config.activation_planes
         self.population_lanes = config.population_lanes if mode == "population_ternary" else 1
         self.residual_scale = config.residual_scale
         projection = normalized_hadamard(config.d_model)
@@ -245,6 +547,9 @@ class TransformerBlock(nn.Module):
             torch.tensor(not requires_coat_calibration(mode)),
             persistent=True,
         )
+        self.last_residual_stats: dict[str, float] = {}
+        self.capture_distillation = False
+        self.last_hidden: Tensor | None = None
 
     def set_activation_projection(self, projection: Tensor) -> None:
         expected = (self.activation_projection.shape[0],) * 2
@@ -259,15 +564,76 @@ class TransformerBlock(nn.Module):
         if requires_coat_calibration(self.mode) and not bool(self.coat_projection_ready):
             raise RuntimeError("COAT mode requires a calibrated activation projection")
         if uses_activation_projection(self.mode):
+            if self.mode in {"coat_progressive", "hadamard_progressive"} and not self.training:
+                q = self.activation_projection.to(
+                    device=tensor.device,
+                    dtype=tensor.dtype,
+                )
+                rotated = tensor @ q
+                if self.activation_encoding == "uniform":
+                    codes, _ = progressive_activation_codes(
+                        rotated,
+                        self.activation_levels,
+                        threshold=self.activation_threshold,
+                    )
+                    qmax = (self.activation_levels - 1) // 2
+                    self.last_residual_stats = {
+                        "configured_levels": float(self.activation_levels),
+                        "used_levels": float(codes.unique().numel()),
+                        "zero_fraction": float(
+                            (codes == 0).to(torch.float32).mean().item()
+                        ),
+                        "saturation_fraction": float(
+                            (codes.abs() == qmax).to(torch.float32).mean().item()
+                        ),
+                    }
+                else:
+                    binary = self.activation_encoding == "residual_binary"
+                    codes, scales = residual_refinement_activation_codes(
+                        rotated,
+                        self.activation_planes,
+                        binary=binary,
+                        threshold=self.activation_threshold,
+                    )
+                    reconstructed = (codes * scales).sum(dim=-1)
+                    error = (rotated - reconstructed).square().mean()
+                    energy = rotated.square().mean().clamp_min(1e-8)
+                    stats = {
+                        "planes": float(self.activation_planes),
+                        "logical_bits_per_scalar": float(
+                            self.activation_planes
+                            if binary
+                            else self.activation_planes * math.log2(3.0)
+                        ),
+                        "normalized_mse": float((error / energy).item()),
+                        "zero_fraction": float(
+                            (codes == 0).to(torch.float32).mean().item()
+                        ),
+                    }
+                    for plane in range(self.activation_planes):
+                        plane_codes = codes[..., plane]
+                        stats[f"plane_{plane}_zero_fraction"] = float(
+                            (plane_codes == 0).to(torch.float32).mean().item()
+                        )
+                    self.last_residual_stats = stats
             return quantize_projected_activation(
                 tensor,
                 self.mode,
                 self.activation_threshold,
                 self.activation_projection,
                 lanes=self.population_lanes,
+                levels=self.activation_levels,
+                encoding=self.activation_encoding,
+                planes=self.activation_planes,
             )
         return quantize_activation(
-            tensor, self.mode, self.activation_threshold, lanes=self.population_lanes
+            tensor,
+            self.mode,
+            self.activation_threshold,
+            lanes=self.population_lanes,
+            levels=self.activation_levels,
+            encoding=self.activation_encoding,
+            planes=self.activation_planes,
         )
 
     def forward(self, inputs: Tensor) -> Tensor:
@@ -279,6 +645,8 @@ class TransformerBlock(nn.Module):
         )
         if uses_quantized_activations(self.mode):
             hidden = self._quantize_residual(hidden)
+        if self.capture_distillation:
+            self.last_hidden = hidden
         return hidden
 
 
@@ -291,15 +659,32 @@ class TernaryGPT(nn.Module):
         self.token_embedding = nn.Parameter(torch.empty(config.vocab_size, config.d_model))
         self.position_embedding = nn.Parameter(torch.empty(config.context_length, config.d_model))
         self.dropout = nn.Dropout(config.dropout)
-        self.blocks = nn.ModuleList(TransformerBlock(config, mode) for _ in range(config.n_layers))
+        self.blocks = nn.ModuleList(
+            TransformerBlock(
+                (
+                    replace(
+                        config,
+                        activation_planes=config.activation_planes_by_layer[layer],
+                    )
+                    if config.activation_planes_by_layer is not None
+                    else config
+                ),
+                mode,
+            )
+            for layer in range(config.n_layers)
+        )
         self.final_norm = TernaryRMSNorm(
             config.d_model,
             mode=mode,
             weight_threshold=config.weight_threshold,
             activation_threshold=config.activation_threshold,
+            activation_levels=config.activation_levels,
+            activation_encoding=config.activation_encoding,
+            activation_planes=config.activation_planes,
             population_lanes=(
                 config.population_lanes if mode == "population_ternary" else 1
             ),
+            rms_norm_quantization=config.rms_norm_quantization,
         )
         nn.init.normal_(self.token_embedding, mean=0.0, std=0.02)
         nn.init.normal_(self.position_embedding, mean=0.0, std=0.02)
@@ -309,10 +694,19 @@ class TernaryGPT(nn.Module):
         for block in self.blocks:
             block.set_activation_projection(projection)
 
+    def reset_hadamard_projection(self) -> None:
+        projection = normalized_hadamard(self.config.d_model)
+        self.set_activation_projection(projection)
+
     def load_activation_projection(self, path: str) -> None:
         payload = torch.load(path, map_location="cpu", weights_only=False)
         projection = payload["projection"] if isinstance(payload, dict) else payload
         self.set_activation_projection(projection)
+
+    def set_capture_distillation(self, enabled: bool) -> None:
+        for block in self.blocks:
+            block.attention.capture_distillation = enabled
+            block.capture_distillation = enabled
 
     @staticmethod
     def _initialize(module: nn.Module) -> None:
@@ -353,6 +747,9 @@ class TernaryGPT(nn.Module):
                 lanes=(
                     self.config.population_lanes if self.mode == "population_ternary" else 1
                 ),
+                levels=self.config.activation_levels,
+                encoding=self.config.activation_encoding,
+                planes=self.config.activation_planes,
             )
 
         for block in self.blocks:
@@ -369,6 +766,9 @@ class TernaryGPT(nn.Module):
                 lanes=(
                     self.config.population_lanes if self.mode == "population_ternary" else 1
                 ),
+                levels=self.config.activation_levels,
+                encoding=self.config.activation_encoding,
+                planes=self.config.activation_planes,
             )
         logits = F.linear(hidden, self._embedding_weight())
         loss = None
@@ -436,11 +836,30 @@ class TernaryGPT(nn.Module):
             }
         return {
             "scheme": self.config.attention_quantization,
+            "normalization": self.config.attention_normalization,
             "clip": self.config.attention_clip,
             "threshold": self.config.attention_threshold,
+            "qkv_quantization": self.config.qkv_quantization,
+            "rectification": self.config.attention_rectification,
+            "gate": self.config.attention_gate,
             "aggregate": aggregate,
             "layers": per_layer,
         }
+
+    def residual_stats(self) -> dict[str, Any]:
+        per_layer = [
+            {"layer": index, **block.last_residual_stats}
+            for index, block in enumerate(self.blocks)
+            if block.last_residual_stats
+        ]
+        aggregate: dict[str, float] = {}
+        if per_layer:
+            keys = set.intersection(*(set(layer) for layer in per_layer)) - {"layer"}
+            aggregate = {
+                key: sum(float(layer[key]) for layer in per_layer) / len(per_layer)
+                for key in sorted(keys)
+            }
+        return {"aggregate": aggregate, "layers": per_layer}
 
     def description(self) -> dict[str, Any]:
         return {
@@ -450,7 +869,18 @@ class TernaryGPT(nn.Module):
             "quantization": self.quantization_stats(),
             "attention": {
                 "scheme": self.config.attention_quantization,
+                "normalization": self.config.attention_normalization,
                 "clip": self.config.attention_clip,
                 "threshold": self.config.attention_threshold,
+                "qkv_quantization": self.config.qkv_quantization,
+                "rectification": self.config.attention_rectification,
+                "gate": self.config.attention_gate,
+            },
+            "residual": {
+                "levels": self.config.activation_levels
+                if self.mode in {"coat_progressive", "hadamard_progressive"}
+                else None,
+                "encoding": self.config.activation_encoding,
+                "planes": self.config.activation_planes,
             },
         }

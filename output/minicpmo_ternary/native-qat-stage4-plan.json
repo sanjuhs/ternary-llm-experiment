@@ -1,0 +1,29 @@
+{
+  "format": "minicpmo-native-ternary-qat-plan-v1",
+  "gpu": "RTX-PRO-6000",
+  "steps": 12,
+  "targets": [
+    "llm.model.layers.19.mlp.down_proj.weight",
+    "llm.model.layers.19.mlp.gate_proj.weight",
+    "llm.model.layers.19.mlp.up_proj.weight",
+    "llm.model.layers.19.self_attn.k_proj.weight"
+  ],
+  "target_parameters": 155189248,
+  "target_fraction_of_model": 0.016559193777192862,
+  "forward_weight_alphabet": [
+    -1,
+    0,
+    1
+  ],
+  "changeable_codes": true,
+  "shadow_weights_training_only": true,
+  "export_shadow_weights": false,
+  "promotion_gate": {
+    "absolute_loss_delta_max": 0.15,
+    "perplexity_ratio_min": 0.8620689655172414,
+    "perplexity_ratio_max": 1.16,
+    "teacher_kl_nats_per_token_max": 0.2,
+    "top_token_agreement_min": 0.8,
+    "fail_closed": true
+  }
+}

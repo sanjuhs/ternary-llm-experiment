@@ -8,13 +8,68 @@ implementable definition.
 
 | Boundary | Strict target | Current experiment |
 |---|---:|---:|
-| Embedding and linear weights | ternary, packed in 2 bits | ternary fake quantization; packed export exists |
-| Residual-stream activations | ternary or INT4 | COAT/Hadamard ternary and A4 variants |
-| Q, K, and V operands | ternary or INT4 | inherited from the activation mode |
-| Softmax input | four codes (2 bits) | `score_int2` |
-| Normalized attention routes | four codes or one bit | `prob_int2`, `prob_binary` |
-| KV cache | same low-bit format as K/V | planned runtime experiment |
-| Model output between blocks | ternary or INT4 | quantized residual boundary |
+| Embedding, normalization, and linear weights | ternary, packed in 2 bits | ternary fake quantization plus deployment export |
+| RMSNorm arithmetic | fixed-point input, integer reductions and square root | validated `integer_reference` runtime; exhaustive loss 2.160526 |
+| Residual-stream activations | binary/ternary code planes | fixed-Hadamard residual-plane variants |
+| Q, K, and V operands | ternary, permitting binary as a strict subset | `ternary`, plus matched `binary_qk_ternary_v` fallback |
+| Softmax input | four codes (2 bits) | `score_lut_prob_int2` |
+| Normalized attention routes | four codes (2 bits) | integer-LUT route quantization |
+| KV cache | ternary K/V codes plus shared head scales | learned-head-scale comparison |
+| Feed-forward nonlinearity | comparison/zeroing only | matched GELU-versus-ReLU hardening |
+| Model output between blocks | binary/ternary code planes | quantized residual boundary |
+
+The repository includes exact arithmetic references for both linear projections
+and attention Q·K. Separate Q·K references convert Q and K into exact ternary
+or binary code tensors, perform the large dot product with INT32 accumulation,
+and apply the two small scale factors afterward. The binary reference covers
+both magnitude-optimal per-vector scales and factorized learned per-head
+scales. Tests compare these paths against the reconstructed fake-quantized
+tensors element for element.
+
+Route·V is not equally factorizable in the current quality path. V is ternary-coded
+but has a separate scale per token; because attention mixes many token
+positions, those scales cannot be pulled outside the whole reduction as one
+factor. The completed ASIC-strict branch therefore uses a learned
+head-shared V scale following BWTA. Fixed-point multipliers inside the
+reduction and scale-bucketed value planes remain possible future compromises
+between that strict branch and the more accurate dynamic-scale path.
+
+The learned head-shared comparison is complete. Each attention block stores
+three small vectors of positive scales—one Q, K, and V value per head. The
+large tensors remain ternary codes; Q·K and Route·V use the packed codes, and
+the corresponding scale products can be applied after accumulation. The first
+matched GELU arm exposed a 0.078748 loss cost versus dynamic token scales. After
+ReLU hardening and integer RMSNorm, the strict learned-head endpoint reaches
+2.250638 loss, 0.090112 behind the protected dynamic-scale quality endpoint.
+
+An exact Route·V arithmetic reference accompanies it. Each `{0,1,2,3}` route
+code is split into low and high binary planes. Both planes multiply ternary V
+codes into INT32 accumulators; the high-plane result is shifted once, the two
+planes are added, the integer route-count denominator is applied, and the one
+shared V scale reconstructs the output. Tests compare this result with the
+explicit reconstructed tensors.
+
+## What the deployment export proves
+
+`ternary-export` now emits `ternary-deployment-v2`. It does not blindly call
+every small parameter “ternary”:
+
+- matrix, embedding, normalization, and fixed-Hadamard tensors use packed
+  two-bit ternary codes plus their row/tensor scale;
+- learned positive Q/K/V head scales use explicit INT16 fixed-point codes;
+- Boolean readiness buffers are preserved losslessly;
+- the artifact records an inference-contract checklist and any violations.
+
+Every completed downstream arm produces this export and its metadata. This
+prevents a per-token-scale or GELU checkpoint from being mislabeled as the
+final ASIC-ready endpoint merely because its shadow weights can be packed.
+
+The mandatory strict endpoint now passes this operand contract. With
+factorizable learned per-head QKV scales, ReLU, and integer-reference RMSNorm,
+it reaches **2.250638 exhaustive loss / 9.4938 perplexity** over 4,907,776
+targets. All eleven contract checks pass. The end-to-end integer-reference flag
+correctly remains false because the PyTorch quality path still emulates
+fixed-point requantization scales and final token sampling uses Softmax.
 
 ## What cannot literally stay in two bits
 
@@ -32,6 +87,28 @@ This is not an exception invented for this project. Integer accelerators
 normally multiply low-bit operands into wide accumulators and requantize at the
 next boundary. The meaningful systems claim is that large stored tensors and
 matrix-multiply operands are low-bit—not that every temporary scalar is.
+
+An INT32 accumulator does not force FP32 output. The accumulator is immediately
+combined with fixed-point or power-of-two scales, rounded, clamped, and stored at
+the next ternary or INT4 boundary. In this model, Q·K needs about seven signed
+bits, width-256 linear reductions about ten, and width-1,024 feed-forward
+reductions about twelve. INT32 is a convenient implementation container, not the
+minimum ASIC width.
+
+The present end-to-end PyTorch path is still not a fused integer runtime. Its
+portable RMSNorm reference quantizes the input to fixed-point codes, accumulates
+squares in INT64, uses a tensorized exact integer square root and division, and
+applies ternary normalization weights. The `integer_reference` model option now
+wires that arithmetic through both Transformer norms and the final norm.
+Training uses its exact forward result with the ordinary RMSNorm derivative as
+a straight-through surrogate. Tests cover exact arithmetic, model gradients,
+checkpoint serialization, and checkpoint-level evaluation. On the 27.4M
+quality endpoint, matched exhaustive validation changes from 2.160893 loss
+with float RMSNorm to **2.160526** with integer-reference RMSNorm, a
+**-0.000367** difference. That passes the declared +0.02 gate, so this boundary
+is quality-preserving in the current experiment. Scale/requantization
+arithmetic and the final token-sampling softmax remain explicit deployment
+boundaries.
 
 ## Matched attention experiment
 

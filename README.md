@@ -1,5 +1,11 @@
 # Ternary LLM Experiment
 
+For the complete result inventory and the next ternary-QKV architecture, see
+[the experiment ledger and roadmap](docs/EXPERIMENT_LEDGER_AND_ROADMAP.md).
+For the published 28M/30M TinyStories claims and our tokenizer-neutral matched
+evaluation, see the
+[TinyStories baseline audit](docs/TINYSTORIES_BASELINE_AUDIT.md).
+
 This repository tests whether a small GPT-style language model can learn TinyStories
 while its learned weights and persistent forward activations use ternary codes
 `{-1, 0, +1}`.
@@ -13,7 +19,38 @@ The results and COAT follow-up are explained for a broader audience in
 The exact meaning of “completely quantized” is defined in
 [docs/COMPLETE_QUANTIZATION_CONTRACT.md](docs/COMPLETE_QUANTIZATION_CONTRACT.md).
 Matched fixed-prompt outputs are preserved in
-[docs/ATTENTION_GENERATION_SAMPLES.md](docs/ATTENTION_GENERATION_SAMPLES.md).
+[docs/ATTENTION_GENERATION_SAMPLES.md](docs/ATTENTION_GENERATION_SAMPLES.md);
+the newer ternary-QKV and integer-LUT outputs are in
+[docs/GATED_ATTENTION_GENERATION_SAMPLES.md](docs/GATED_ATTENTION_GENERATION_SAMPLES.md).
+The strict residual-curriculum outputs are preserved in
+[docs/FULLY_TERNARY_GENERATION_SAMPLES.md](docs/FULLY_TERNARY_GENERATION_SAMPLES.md).
+
+## Current headline results
+
+All in-project values below use the same 27.4M-parameter architecture,
+tokenizer, TinyStories validation stream, and 4,907,776 evaluated targets:
+
+| Inference representation | Validation loss | Perplexity |
+|---|---:|---:|
+| Float control | **1.344198** | **3.8351** |
+| Ternary weights, ordinary activations | **1.535463** | **4.6435** |
+| Ternary weights, four-bit residual activations | **1.800118** | **6.0504** |
+| Ternary weights/Q/K/V, two-bit integer attention, three ternary residual planes, ReLU, integer RMSNorm (dynamic token scales) | **2.160526** | **8.6757** |
+| Strict ternary-operand endpoint: the same low-bit path with factorizable per-head QKV scales | **2.250638** | **9.4938** |
+
+The dynamic-scale row is the best exhaustive code-constrained quality result;
+the final row is the separately trained hardware endpoint. Its packed export
+passes every ternary-operand-contract check, including factorizable QKV scales,
+ReLU, and integer RMSNorm. It is still not a fused end-to-end integer runtime:
+fixed-point requantization and final token-sampling Softmax remain explicit
+boundaries. Three ternary residual planes also occupy six physical code bits
+per scalar, so this is ternary compute rather than an exact two-bit residual
+storage result. The matched
+factorizable per-head-scale arm reaches 2.309650 loss, exposing a real 0.078748
+quality cost in the earlier GELU comparison. Replacing GELU with ReLU under a
+matched 4,000-step budget improves exhaustive loss by 0.070009. The active
+refinement chain therefore preserves both endpoints rather than relabeling the
+better storyteller as hardware-ready.
 
 ## What is implemented
 
@@ -27,6 +64,20 @@ Matched fixed-prompt outputs are preserved in
   ternary-activation arms;
 - four-code attention-score, four-code attention-probability, combined, and
   binary-routing experiments with code-use diagnostics;
+- independently forced ternary Q/K/V, a binary-Q/K-plus-ternary-V fallback,
+  Q-ViT-style rectification, binary no-op gates, and an integer four-entry
+  exponential lookup reference;
+- a BWTA-inspired progressive residual alphabet with magnitude alignment,
+  per-layer code-use diagnostics, hidden-state distillation, and an exact
+  three-code endpoint;
+- exact two-bit binary residual refinement, multi-plane ternary residuals,
+  fixed-Hadamard mixing, and layer-specific plane allocation;
+- teacher/student logit, attention-map, and sampled Q-Q/K-K relation
+  distillation;
+- exact reference linear, attention Q·K, and two-plane Route·V paths with
+  binary/ternary code operands and INT32 accumulators;
+- an integer-LUT Softmax-1 route with a virtual no-update code that contributes
+  to the integer denominator without adding a value vector;
 - straight-through ternary fake quantization with per-row weight and per-token
   activation scales;
 - training, validation, checkpoint/resume, and text generation;
@@ -41,11 +92,60 @@ not claim a speedup without a fused device kernel.
 
 - [Model checkpoints, packed weights, projections, and
   metrics](https://huggingface.co/sanjuhs/ternary-llm-experiment)
+- [Ternary-QKV and strict integer-LUT pilot
+  artifacts](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/gated-attention-pilot)
+- [Progressive fully ternary residual pilot
+  artifacts](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/fully-ternary-pilot)
+- [Residual-plane refinement
+  artifacts](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/residual-refinement-pilot)
+- [Matched dynamic-token and factorizable per-head QKV scale
+  runs](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/tinystories-28m/runs)
+- [Strict ternary-operand endpoint, packed export, and exhaustive
+  metrics](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/tinystories-28m/runs/strict-contract-relu-rmsnorm)
+- [Fail-closed completion
+  audit](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/tinystories-28m/experiments/completion-audit)
+- [Attention-clip screening checkpoint
+  lineage](https://huggingface.co/sanjuhs/ternary-llm-experiment/tree/main/tinystories-28m/experiments/lineage)
 - [Complete tokenized TinyStories
   stream](https://huggingface.co/datasets/sanjuhs/ternary-tinystories-4096)
 
 Generated data and checkpoints remain ignored by Git; the public Hub repositories
-hold 1.14 GB of experiment artifacts and 986 MB of reproducible token streams.
+hold the experiment checkpoints and reproducible token streams.
+
+Completed run directories can be audited, uploaded, and remotely enumerated in
+one command. The command writes a deterministic `artifact-manifest.json` before
+uploading and fails if any local file is absent from the resulting Hub commit:
+
+```bash
+uv run ternary-publish-hf \
+  artifacts/tinystories-28m/ternary-weights-one-pass \
+  --path-in-repo tinystories-28m/ternary-weights-one-pass \
+  --ipv4-only
+```
+
+Selection and comparison folders are not checkpoint runs, so they use an
+explicit metadata mode. This skips the run-schema assertion but still verifies
+the size and Git-blob or LFS digest of every uploaded file:
+
+```bash
+uv run ternary-publish-hf \
+  artifacts/tinystories-28m/integer-rmsnorm-screen \
+  --metadata-folder \
+  --path-in-repo tinystories-28m/experiments/integer-rmsnorm-screen \
+  --receipt artifacts/tinystories-28m/publication-receipts/metadata--integer-rmsnorm-screen.json \
+  --ipv4-only
+```
+
+After every run and metadata folder has an external receipt, the final
+completion audit rebuilds the fail-closed experiment summary, checks that no
+local file changed after publication, and requires unique verified Hub paths:
+
+```bash
+uv run ternary-completion-audit \
+  artifacts/tinystories-28m \
+  artifacts/tinystories-28m/publication-receipts \
+  --output artifacts/tinystories-28m/completion-audit/audit.json
+```
 
 ## Setup
 
@@ -201,10 +301,38 @@ scripts/remote_run_stage_a.sh
 
 # Run the matched 2-bit attention PTQ and 500-step QAT matrix:
 scripts/remote_attention_pilot.sh
+
+# Run the ternary-QKV, gating, distillation, and integer-LUT pilot:
+scripts/remote_gated_attention_pilot.sh
+
+# Progressively reduce every residual boundary to exactly three codes:
+scripts/remote_fully_ternary_pilot.sh
+
+# After the 27.4M strict control completes, run the matched refinement chain:
+scripts/remote_finalize_strict.sh
+scripts/remote_attention_clip_refinement.sh
+scripts/remote_shared_qkv_scale_refinement.sh
+scripts/remote_softmax1_refinement.sh
+scripts/remote_relu_hardening.sh
+scripts/remote_binary_qk_fallback.sh
+scripts/remote_integer_rmsnorm_screen.sh
+
+# Or launch one locked watcher before the baseline finishes:
+scripts/remote_refinement_pipeline.sh
+
+# This fails closed unless every stage and checksum-complete run succeeded:
+ternary-overnight-summary artifacts/tinystories-28m \
+  --json-output artifacts/tinystories-28m/overnight-summary/summary.json \
+  --markdown-output artifacts/tinystories-28m/overnight-summary/summary.md
 ```
 
-The full runner resumes any existing per-mode checkpoint. Copy `artifacts/` back to
-the local repository before stopping or deleting a pod.
+The refinement scripts are ordered and idempotent: each requires the prior
+stage's selection metadata and writes `SUCCESS` only after exhaustive
+validation, generations, packed export, checksums, and artifact audit. The
+summary command also verifies recorded checkpoint lineage and independently
+re-audits complete SHA-256 manifests before ranking exhaustive validation
+results. The full runner resumes any existing per-mode checkpoint. Copy
+`artifacts/` back to the local repository before stopping or deleting a pod.
 
 The helper scripts accept the pod host, SSH port, and private-key path:
 
@@ -226,6 +354,12 @@ uv run ternary-generate \
   --prompt "Once upon a time" \
   --max-new-tokens 80
 ```
+
+The BinaryAttention-inspired fallback is available to training and evaluation
+as `--qkv-quantization binary_qk_ternary_v`. It encodes Q/K as exact signs and
+V as ternary codes; use `--qkv-scale-granularity learned_head` for the
+factorizable deployment path. This is stricter than the source paper's
+eight-bit Route·V path and intentionally omits its optional dense/context bias.
 
 Use `--device cpu`, `--device mps`, or `--device cuda` to override automatic device
 selection. Checkpoints include the resolved model and training configuration.
@@ -261,3 +395,11 @@ uv run ternary-export \
   --checkpoint artifacts/full-stage-a/ternary_weights/checkpoint.pt \
   --output artifacts/full-stage-a/ternary_weights/model-2bit.pt
 ```
+
+The `ternary-deployment-v2` artifact packs ternary operands at two bits, stores
+learned positive Q/K/V head scales as INT16 fixed-point values, preserves
+non-floating buffers, and includes a machine-readable inference-contract
+checklist. A packed checkpoint is therefore not automatically labeled
+end-to-end integer. Exact fixed-point RMSNorm is now available through the
+opt-in `integer_reference` runtime and export override, but remaining
+requantization and sampling boundaries are reported in the export metadata.

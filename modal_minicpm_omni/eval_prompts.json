@@ -1,0 +1,32 @@
+[
+  {
+    "id": "hello",
+    "text": "Hi, how are you today?",
+    "language": "en",
+    "purpose": "basic conversational responsiveness"
+  },
+  {
+    "id": "gamma_bakery",
+    "text": "GaMMA, tell me about your favorite chocolate cake in two sentences.",
+    "language": "en",
+    "purpose": "persona adherence and concise speech"
+  },
+  {
+    "id": "german_cake",
+    "text": "Was macht einen Schokoladenkuchen besonders gut?",
+    "language": "de",
+    "purpose": "German comprehension and response quality"
+  },
+  {
+    "id": "bangalore_weather",
+    "text": "What would you bake on a rainy afternoon in Bangalore?",
+    "language": "en",
+    "purpose": "open-ended grounded conversation"
+  },
+  {
+    "id": "shanghai_plan",
+    "text": "What should your small Shanghai bakery serve on opening day?",
+    "language": "en",
+    "purpose": "longer coherent planning response"
+  }
+]

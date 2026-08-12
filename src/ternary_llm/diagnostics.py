@@ -2,13 +2,18 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import torch
 from torch import Tensor, nn
 
-from ternary_llm.config import ModelConfig, load_config
+from ternary_llm.config import (
+    VALID_RMS_NORM_QUANTIZATIONS,
+    ModelConfig,
+    load_config,
+)
 from ternary_llm.model import (
     CausalSelfAttention,
     FeedForward,
@@ -85,13 +90,23 @@ def main() -> None:
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--device", choices=["auto", "cpu", "mps", "cuda"], default="auto")
     parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument(
+        "--rms-norm-quantization",
+        choices=VALID_RMS_NORM_QUANTIZATIONS,
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
     device = resolve_device(args.device)
     checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
     stored = checkpoint["config"]
-    model = TernaryGPT(ModelConfig(**stored["model"]), stored["mode"]).to(device)
+    model_config = ModelConfig(**stored["model"])
+    if args.rms_norm_quantization:
+        model_config = replace(
+            model_config,
+            rms_norm_quantization=args.rms_norm_quantization,
+        )
+    model = TernaryGPT(model_config, stored["mode"]).to(device)
     model.load_state_dict(checkpoint["model"])
     model.eval()
 

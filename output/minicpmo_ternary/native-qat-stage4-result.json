@@ -1,0 +1,133 @@
+{
+  "format": "minicpmo-native-ternary-qat-pilot-v1",
+  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+  "targets": [
+    "llm.model.layers.19.mlp.down_proj.weight",
+    "llm.model.layers.19.mlp.gate_proj.weight",
+    "llm.model.layers.19.mlp.up_proj.weight",
+    "llm.model.layers.19.self_attn.k_proj.weight"
+  ],
+  "target_parameters": 155189248,
+  "steps": 12,
+  "load_ms": 18710.2,
+  "peak_gpu_memory_gib": 31.982797145843506,
+  "before": {
+    "teacher_loss": 6.038158594393263,
+    "student_loss": 6.04267853381587,
+    "loss_delta": 0.004519939422607422,
+    "perplexity_ratio": 1.0045301697564886,
+    "teacher_kl_nats_per_token": 0.06663626972951141,
+    "top_token_agreement": 0.8627450980392157,
+    "tokens": 51
+  },
+  "after": {
+    "teacher_loss": 6.038158594393263,
+    "student_loss": 6.06225570042928,
+    "loss_delta": 0.024097106036017557,
+    "perplexity_ratio": 1.0243897874925942,
+    "teacher_kl_nats_per_token": 0.06727842314570558,
+    "top_token_agreement": 0.8627450980392157,
+    "tokens": 51
+  },
+  "quality_gate": {
+    "absolute_loss_delta": 0.024097106036017557,
+    "absolute_loss_delta_max": 0.15,
+    "perplexity_ratio": 1.0243897874925942,
+    "perplexity_ratio_min": 0.8620689655172414,
+    "perplexity_ratio_max": 1.16,
+    "teacher_kl_nats_per_token": 0.06727842314570558,
+    "teacher_kl_nats_per_token_max": 0.2,
+    "top_token_agreement": 0.8627450980392157,
+    "top_token_agreement_min": 0.8,
+    "passes": true
+  },
+  "changed_code_fraction": 0.0003036808323215794,
+  "checkpoint": "/native-qat/guarded-curriculum-v1/stage-04-tensors.pt",
+  "checkpoint_contains_shadow_weights": false,
+  "metrics": [
+    {
+      "step": 1,
+      "loss": 7.89614200592041,
+      "cross_entropy": 7.8381476402282715,
+      "distillation_kl": 0.05799420550465584,
+      "gradient_norm": 4.617563247680664
+    },
+    {
+      "step": 2,
+      "loss": 6.649979114532471,
+      "cross_entropy": 6.602063179016113,
+      "distillation_kl": 0.04791611433029175,
+      "gradient_norm": 3.582329750061035
+    },
+    {
+      "step": 3,
+      "loss": 5.469533443450928,
+      "cross_entropy": 5.429683208465576,
+      "distillation_kl": 0.03985021635890007,
+      "gradient_norm": 3.7938058376312256
+    },
+    {
+      "step": 4,
+      "loss": 7.4662299156188965,
+      "cross_entropy": 7.447038650512695,
+      "distillation_kl": 0.019191496074199677,
+      "gradient_norm": 2.3372230529785156
+    },
+    {
+      "step": 5,
+      "loss": 6.789813041687012,
+      "cross_entropy": 6.759048938751221,
+      "distillation_kl": 0.03076395019888878,
+      "gradient_norm": 1.969720721244812
+    },
+    {
+      "step": 6,
+      "loss": 8.134596824645996,
+      "cross_entropy": 8.109118461608887,
+      "distillation_kl": 0.02547796443104744,
+      "gradient_norm": 3.621347427368164
+    },
+    {
+      "step": 7,
+      "loss": 4.275791645050049,
+      "cross_entropy": 4.234476566314697,
+      "distillation_kl": 0.04131520912051201,
+      "gradient_norm": 2.0793068408966064
+    },
+    {
+      "step": 8,
+      "loss": 6.097372055053711,
+      "cross_entropy": 5.702897548675537,
+      "distillation_kl": 0.3944742679595947,
+      "gradient_norm": 8.815306663513184
+    },
+    {
+      "step": 9,
+      "loss": 6.697210788726807,
+      "cross_entropy": 6.6432647705078125,
+      "distillation_kl": 0.053945839405059814,
+      "gradient_norm": 3.9847559928894043
+    },
+    {
+      "step": 10,
+      "loss": 7.941339492797852,
+      "cross_entropy": 7.9028520584106445,
+      "distillation_kl": 0.0384872630238533,
+      "gradient_norm": 3.4008283615112305
+    },
+    {
+      "step": 11,
+      "loss": 6.109788417816162,
+      "cross_entropy": 6.070892333984375,
+      "distillation_kl": 0.03889629989862442,
+      "gradient_norm": 3.2187957763671875
+    },
+    {
+      "step": 12,
+      "loss": 8.554191589355469,
+      "cross_entropy": 8.50494384765625,
+      "distillation_kl": 0.0492473803460598,
+      "gradient_norm": 3.7354238033294678
+    }
+  ]
+}

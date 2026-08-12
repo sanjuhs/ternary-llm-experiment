@@ -138,3 +138,60 @@ def evaluate_model(
         "loss": mean_loss,
         "perplexity": math.exp(min(mean_loss, 20.0)),
     }
+
+
+@torch.no_grad()
+def evaluate_model_sequential(
+    model: nn.Module,
+    stream: TokenStream,
+    *,
+    batch_size: int,
+    device: torch.device,
+    precision: str = "fp32",
+    max_batches: int | None = None,
+) -> dict[str, float]:
+    """Evaluate deterministic, non-overlapping packed windows."""
+    was_training = model.training
+    model.eval()
+    window = stream.context_length
+    maximum_start = len(stream.tokens) - window - 1
+    starts = list(range(0, maximum_start + 1, window))
+    if max_batches is not None:
+        starts = starts[: max_batches * batch_size]
+    total_nll = 0.0
+    total_tokens = 0
+    for batch_start in range(0, len(starts), batch_size):
+        offsets = starts[batch_start : batch_start + batch_size]
+        inputs = np.stack(
+            [
+                np.asarray(stream.tokens[offset : offset + window], dtype=np.int64)
+                for offset in offsets
+            ]
+        )
+        targets = np.stack(
+            [
+                np.asarray(
+                    stream.tokens[offset + 1 : offset + window + 1],
+                    dtype=np.int64,
+                )
+                for offset in offsets
+            ]
+        )
+        input_tensor = torch.from_numpy(inputs).to(device)
+        target_tensor = torch.from_numpy(targets).to(device)
+        with autocast_context(device, precision):
+            _, loss = model(input_tensor, target_tensor)
+        if loss is None:
+            raise RuntimeError("model did not return a validation loss")
+        count = target_tensor.numel()
+        total_nll += float(loss.item()) * count
+        total_tokens += count
+    if was_training:
+        model.train()
+    mean_loss = total_nll / total_tokens
+    return {
+        "loss": mean_loss,
+        "perplexity": math.exp(min(mean_loss, 20.0)),
+        "evaluated_tokens": float(total_tokens),
+        "available_target_tokens": float(len(stream.tokens) - 1),
+    }

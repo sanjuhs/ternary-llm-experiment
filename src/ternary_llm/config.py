@@ -8,16 +8,63 @@ from typing import Any, Literal
 AttentionQuantization = Literal[
     "float",
     "score_int2",
+    "score_int2_lut",
     "prob_int2",
     "score_prob_int2",
+    "score_lut_prob_int2",
     "prob_binary",
+    "score_lut_prob_binary",
 ]
 VALID_ATTENTION_QUANTIZATIONS: tuple[AttentionQuantization, ...] = (
     "float",
     "score_int2",
+    "score_int2_lut",
     "prob_int2",
     "score_prob_int2",
+    "score_lut_prob_int2",
     "prob_binary",
+    "score_lut_prob_binary",
+)
+
+AttentionNormalization = Literal["softmax", "softmax1"]
+VALID_ATTENTION_NORMALIZATIONS: tuple[AttentionNormalization, ...] = (
+    "softmax",
+    "softmax1",
+)
+
+QKVQuantization = Literal["inherit", "ternary", "binary_qk_ternary_v"]
+VALID_QKV_QUANTIZATIONS: tuple[QKVQuantization, ...] = (
+    "inherit",
+    "ternary",
+    "binary_qk_ternary_v",
+)
+
+QKVScaleGranularity = Literal["token", "learned_head"]
+VALID_QKV_SCALE_GRANULARITIES: tuple[QKVScaleGranularity, ...] = (
+    "token",
+    "learned_head",
+)
+
+AttentionRectification = Literal["none", "qvit"]
+VALID_ATTENTION_RECTIFICATIONS: tuple[AttentionRectification, ...] = ("none", "qvit")
+
+AttentionGate = Literal["none", "sigmoid", "binary"]
+VALID_ATTENTION_GATES: tuple[AttentionGate, ...] = ("none", "sigmoid", "binary")
+
+FeedForwardActivation = Literal["gelu", "relu"]
+VALID_FEED_FORWARD_ACTIVATIONS: tuple[FeedForwardActivation, ...] = ("gelu", "relu")
+
+RMSNormQuantization = Literal["float", "integer_reference"]
+VALID_RMS_NORM_QUANTIZATIONS: tuple[RMSNormQuantization, ...] = (
+    "float",
+    "integer_reference",
+)
+
+ActivationEncoding = Literal["uniform", "residual_binary", "residual_ternary"]
+VALID_ACTIVATION_ENCODINGS: tuple[ActivationEncoding, ...] = (
+    "uniform",
+    "residual_binary",
+    "residual_ternary",
 )
 
 Mode = Literal[
@@ -30,6 +77,8 @@ Mode = Literal[
     "coat_a4",
     "hadamard_ternary",
     "coat_ternary",
+    "coat_progressive",
+    "hadamard_progressive",
 ]
 VALID_MODES: tuple[Mode, ...] = (
     "float",
@@ -41,6 +90,8 @@ VALID_MODES: tuple[Mode, ...] = (
     "coat_a4",
     "hadamard_ternary",
     "coat_ternary",
+    "coat_progressive",
+    "hadamard_progressive",
 )
 
 
@@ -54,12 +105,25 @@ class ModelConfig:
     ff_multiplier: int = 4
     dropout: float = 0.0
     activation_threshold: float = 0.5
+    activation_levels: int = 19
+    activation_encoding: ActivationEncoding = "uniform"
+    activation_planes: int = 1
+    activation_planes_by_layer: list[int] | None = None
     weight_threshold: float = 0.5
     population_lanes: int = 1
     residual_scale: float = 1.0
     attention_quantization: AttentionQuantization = "float"
+    attention_normalization: AttentionNormalization = "softmax"
     attention_clip: float = 6.0
     attention_threshold: float = 0.5
+    qkv_quantization: QKVQuantization = "inherit"
+    qkv_scale_granularity: QKVScaleGranularity = "token"
+    qkv_scale_initial: float = 0.5
+    attention_rectification: AttentionRectification = "none"
+    attention_gate: AttentionGate = "none"
+    attention_gate_initial: float = 0.9
+    feed_forward_activation: FeedForwardActivation = "gelu"
+    rms_norm_quantization: RMSNormQuantization = "float"
 
     def validate(self) -> None:
         if self.vocab_size <= 4:
@@ -76,6 +140,24 @@ class ModelConfig:
             raise ValueError("dropout must be in [0, 1)")
         if self.activation_threshold <= 0 or self.weight_threshold <= 0:
             raise ValueError("ternary thresholds must be positive")
+        if self.activation_levels < 3 or self.activation_levels % 2 == 0:
+            raise ValueError("activation_levels must be an odd integer of at least 3")
+        if self.activation_encoding not in VALID_ACTIVATION_ENCODINGS:
+            raise ValueError(
+                "activation_encoding must be one of "
+                f"{VALID_ACTIVATION_ENCODINGS}, got {self.activation_encoding!r}"
+            )
+        if self.activation_planes < 1:
+            raise ValueError("activation_planes must be positive")
+        if self.activation_planes_by_layer is not None:
+            if len(self.activation_planes_by_layer) != self.n_layers:
+                raise ValueError(
+                    "activation_planes_by_layer must contain one value per layer"
+                )
+            if any(planes < 1 for planes in self.activation_planes_by_layer):
+                raise ValueError(
+                    "activation_planes_by_layer values must all be positive"
+                )
         if self.population_lanes < 1:
             raise ValueError("population_lanes must be positive")
         if self.residual_scale <= 0:
@@ -85,10 +167,62 @@ class ModelConfig:
                 "attention_quantization must be one of "
                 f"{VALID_ATTENTION_QUANTIZATIONS}, got {self.attention_quantization!r}"
             )
+        if self.attention_normalization not in VALID_ATTENTION_NORMALIZATIONS:
+            raise ValueError(
+                "attention_normalization must be one of "
+                f"{VALID_ATTENTION_NORMALIZATIONS}, "
+                f"got {self.attention_normalization!r}"
+            )
         if self.attention_clip <= 0:
             raise ValueError("attention_clip must be positive")
         if not 0.0 < self.attention_threshold <= 1.0:
             raise ValueError("attention_threshold must be in (0, 1]")
+        if self.qkv_quantization not in VALID_QKV_QUANTIZATIONS:
+            raise ValueError(
+                f"qkv_quantization must be one of {VALID_QKV_QUANTIZATIONS}, "
+                f"got {self.qkv_quantization!r}"
+            )
+        if self.qkv_scale_granularity not in VALID_QKV_SCALE_GRANULARITIES:
+            raise ValueError(
+                "qkv_scale_granularity must be one of "
+                f"{VALID_QKV_SCALE_GRANULARITIES}, "
+                f"got {self.qkv_scale_granularity!r}"
+            )
+        if (
+            self.qkv_scale_granularity != "token"
+            and self.qkv_quantization
+            not in {"ternary", "binary_qk_ternary_v"}
+        ):
+            raise ValueError(
+                "non-token QKV scales require quantized Q/K/V"
+            )
+        if self.qkv_scale_initial <= 0:
+            raise ValueError("qkv_scale_initial must be positive")
+        if self.attention_rectification not in VALID_ATTENTION_RECTIFICATIONS:
+            raise ValueError(
+                "attention_rectification must be one of "
+                f"{VALID_ATTENTION_RECTIFICATIONS}, "
+                f"got {self.attention_rectification!r}"
+            )
+        if self.attention_gate not in VALID_ATTENTION_GATES:
+            raise ValueError(
+                f"attention_gate must be one of {VALID_ATTENTION_GATES}, "
+                f"got {self.attention_gate!r}"
+            )
+        if not 0.0 < self.attention_gate_initial < 1.0:
+            raise ValueError("attention_gate_initial must be in (0, 1)")
+        if self.feed_forward_activation not in VALID_FEED_FORWARD_ACTIVATIONS:
+            raise ValueError(
+                "feed_forward_activation must be one of "
+                f"{VALID_FEED_FORWARD_ACTIVATIONS}, "
+                f"got {self.feed_forward_activation!r}"
+            )
+        if self.rms_norm_quantization not in VALID_RMS_NORM_QUANTIZATIONS:
+            raise ValueError(
+                "rms_norm_quantization must be one of "
+                f"{VALID_RMS_NORM_QUANTIZATIONS}, "
+                f"got {self.rms_norm_quantization!r}"
+            )
 
 
 @dataclass(frozen=True)
@@ -116,6 +250,12 @@ class TrainConfig:
     optimizer: str = "adamw"
     counter_threshold: int = 8
     transition_rate: float = 0.002
+    logit_distillation_weight: float = 0.0
+    attention_distillation_weight: float = 0.0
+    qk_distillation_weight: float = 0.0
+    hidden_distillation_weight: float = 0.0
+    distillation_temperature: float = 1.0
+    distillation_token_stride: int = 4
 
     def validate(self) -> None:
         integer_fields = {
@@ -147,6 +287,18 @@ class TrainConfig:
             raise ValueError("counter_threshold must be between 1 and 127")
         if not 0.0 < self.transition_rate <= 1.0:
             raise ValueError("transition_rate must be in (0, 1]")
+        distillation_weights = (
+            self.logit_distillation_weight,
+            self.attention_distillation_weight,
+            self.qk_distillation_weight,
+            self.hidden_distillation_weight,
+        )
+        if any(weight < 0 for weight in distillation_weights):
+            raise ValueError("distillation weights must be non-negative")
+        if self.distillation_temperature <= 0:
+            raise ValueError("distillation_temperature must be positive")
+        if self.distillation_token_stride < 1:
+            raise ValueError("distillation_token_stride must be positive")
 
 
 @dataclass(frozen=True)

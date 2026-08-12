@@ -13,6 +13,32 @@ def read_metrics(path: Path) -> list[dict[str, Any]]:
     ]
 
 
+def validation_trajectory(metrics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Extract compact, blog-ready validation diagnostics from metric rows."""
+    trajectory = []
+    for metric in metrics:
+        if metric.get("type") != "validation":
+            continue
+        attention = metric.get("attention", {}).get("aggregate", {})
+        residual = metric.get("residual", {}).get("aggregate", {})
+        weight_codes = metric.get("weight_codes", {}).get("fractions", {})
+        trajectory.append(
+            {
+                "step": int(metric["step"]),
+                "tokens": int(metric.get("tokens", 0)),
+                "loss": float(metric["loss"]),
+                "perplexity": float(metric["perplexity"]),
+                "attention_zero_fraction": attention.get(
+                    "probability_code_0_fraction"
+                ),
+                "attention_entropy": attention.get("entropy"),
+                "residual_normalized_mse": residual.get("normalized_mse"),
+                "weight_zero_fraction": weight_codes.get("0"),
+            }
+        )
+    return trajectory
+
+
 def summarize_run(
     metrics_path: Path,
     *,
@@ -43,9 +69,52 @@ def summarize_run(
         "estimated_compute_cost": hours * hourly_cost,
     }
     if validation:
+        trajectory = validation_trajectory(metrics)
         result["latest_validation_loss"] = validation[-1]["loss"]
         result["latest_validation_perplexity"] = validation[-1]["perplexity"]
+        result["validation_trajectory"] = trajectory
+        if len(trajectory) >= 2:
+            result["validation_loss_change"] = (
+                trajectory[-1]["loss"] - trajectory[0]["loss"]
+            )
     return result
+
+
+def _format_optional(value: Any, *, percentage: bool = False) -> str:
+    if not isinstance(value, (int, float)):
+        return "—"
+    if percentage:
+        return f"{100 * value:.2f}%"
+    return f"{value:.4f}"
+
+
+def render_trajectory_markdown(summaries: list[dict[str, Any]]) -> str:
+    """Render deterministic Markdown tables for research notes and PRs."""
+    lines = ["# Validation trajectories", ""]
+    for summary in summaries:
+        trajectory = summary.get("validation_trajectory", [])
+        if not trajectory:
+            continue
+        lines.extend(
+            [
+                f"## {summary['run']}",
+                "",
+                "| Step | Loss | Perplexity | Zero routes | Attention entropy | Residual NMSE |",
+                "|---:|---:|---:|---:|---:|---:|",
+            ]
+        )
+        for row in trajectory:
+            lines.append(
+                "| "
+                f"{row['step']:,} | "
+                f"{row['loss']:.6f} | "
+                f"{row['perplexity']:.4f} | "
+                f"{_format_optional(row['attention_zero_fraction'], percentage=True)} | "
+                f"{_format_optional(row['attention_entropy'])} | "
+                f"{_format_optional(row['residual_normalized_mse'], percentage=True)} |"
+            )
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def main() -> None:
@@ -53,6 +122,7 @@ def main() -> None:
     parser.add_argument("--artifacts", type=Path, required=True)
     parser.add_argument("--token-budget", type=int, required=True)
     parser.add_argument("--hourly-cost", type=float, required=True)
+    parser.add_argument("--format", choices=("json", "markdown"), default="json")
     args = parser.parse_args()
 
     summaries = [
@@ -70,7 +140,10 @@ def main() -> None:
         "total_estimated_hours": sum(item["estimated_hours"] for item in summaries),
         "total_estimated_compute_cost": sum(item["estimated_compute_cost"] for item in summaries),
     }
-    print(json.dumps(output, indent=2))
+    if args.format == "markdown":
+        print(render_trajectory_markdown(summaries), end="")
+    else:
+        print(json.dumps(output, indent=2))
 
 
 if __name__ == "__main__":

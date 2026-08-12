@@ -56,6 +56,25 @@ So a defensible “fully quantized Transformer” means that the large stored
 tensors and the inputs crossing expensive compute boundaries are low-bit. It
 does **not** mean that a 256-term sum is somehow stored in two bits.
 
+### Does an INT32 sum turn the next layer into FP32?
+
+No. Think of the accumulator as a temporary bucket, not the network's storage
+format.
+
+For one attention head in our model, a Q·K dot product adds 32 ternary products.
+The exact answer fits in about seven signed bits. A feed-forward dot product can
+add 1,024 products and needs about twelve. We use INT32 because existing hardware
+likes it and it is comfortably safe. A custom chip could use narrower buckets.
+
+After the sum, the chip applies a small scale, rounds the answer, and writes the
+next tensor back as ternary or four-bit. The next matrix multiplication therefore
+still receives low-bit operands. Nothing requires an FP32 activation to be saved
+between the two operations.
+
+Softmax needs a wider row sum and RMSNorm needs a wider sum of squares for the
+same reason. Those few temporary numbers do not erase the storage, bandwidth, and
+add/subtract/skip benefits of ternary weight and activation matrices.
+
 ## What our current numbers mean
 
 Our TinyStories model has about 5.8 million parameters. Starting from its
@@ -139,6 +158,14 @@ ternary activations and binary attention, but its reported language-model
 experiment replaces only 30% of the least-sensitive layers. It does not yet
 prove that every layer of an LLM can be made ternary without a quality cost.
 
+There is also a small but important hardware detail. BWTA gives a whole layer
+one learned scale for Q, K, the attention map, and V. It can therefore perform
+the big matrix multiplications on packed binary/ternary codes and multiply by
+the scale afterward. Our present experiment gives each V token its own scale,
+which usually reconstructs values more accurately but makes Route·V harder to
+implement as one pure binary-by-ternary kernel. A future shared-scale V arm will
+measure that accuracy-versus-hardware trade-off directly.
+
 ## What would count as success?
 
 One attractive sample is not enough. We will call a method competitive only
@@ -159,3 +186,366 @@ weights are already strong, four-bit activations are close, and two-bit
 attention looks experimentally reachable. Uniformly ternary activations across
 every layer remain the open part—and the training transition, more than the
 threshold alone, is likely to decide whether it works.
+
+## The latest experiment
+
+We have separated Q/K/V precision from residual precision. This matters because
+the earlier COAT A4 model quietly inherited four-bit Q, K, and V. The new pilot
+forces all three to ternary while keeping the residual stream at four bits long
+enough to isolate the attention problem.
+
+The combined student tested:
+
+- Q-ViT-style learned reshaping to make ternary Q and K codes more informative;
+- ternary Q·K with a wider integer sum;
+- an EXAQ/I-LLM-style four-code softmax input and four-entry integer lookup table;
+- either a two-bit attention route or BWTA-style binary route;
+- ternary V;
+- a learned binary per-head gate that can zero an update cleanly;
+- teacher matching on output logits, attention maps, and Q-Q/K-K relationships.
+
+The first post-training switch was intentionally bad: forced ternary Q/K/V
+raised loss from the 2.14 range to 3.61, and untrained Q-ViT rectification raised
+it further. Training recovered most of that damage:
+
+| Model after equal-budget training | Loss | Plain-language result |
+|---|---:|---|
+| Matched A4-QKV control | 2.1391 | Best quality in this pilot |
+| Ternary Q/K/V | **2.2898** | Best ternary-attention quality |
+| Ternary Q/K/V + integer softmax route | **2.2999** | Almost the same as plain ternary Q/K/V |
+| Q-ViT rectification + hard gate | 2.5619 | Worse; every gate stayed open |
+
+In simple terms, forcing the three attention operands to ternary now works well
+enough to generate recognizable stories. Replacing the score-to-probability path
+with two-bit codes and a four-entry integer lookup adds only about 0.01 loss.
+However, the strict model is still about 0.16 loss behind the matched control,
+so it is promising rather than equivalent.
+
+## Did making the rest ternary work?
+
+We have now run that experiment. Instead of throwing away precision all at once,
+we gave the model fewer and fewer activation choices:
+
+```text
+19 → 15 → 11 → 9 → 7 → 5 → 3
+```
+
+At the final stage, the values saved between Transformer blocks really have only
+three choices: negative, zero, or positive. Q, K, and V are ternary too. We used
+ReLU so the feed-forward step does not need a complicated smooth lookup, and
+attention connections are kept or dropped with a binary route.
+
+The model runs and generates text. That is an important engineering milestone.
+But the text is fragmented, and its best validation loss is **5.0989**. The
+four-bit activation model scored **2.1126**, where lower is better. So this is
+not yet a useful fully ternary language model.
+
+The interesting clue is where quality falls:
+
+| Choices per residual value | Validation loss |
+|---:|---:|
+| 19 | 2.3975 |
+| 11 | 2.7650 |
+| 7 | 3.3627 |
+| 5 | 4.2366 |
+| 3 | **5.0989** after extra training |
+
+The big break happens below seven choices. Think of the residual stream as the
+model's notebook. Three symbols are enough to record a direction, but apparently
+not enough for this ordinary Transformer to preserve all the details it needs
+across six layers.
+
+The next experiment gave each number two or three tiny ternary “planes.” Each
+plane still contains only minus, zero, or plus, so a future chip can keep using
+cheap ternary operations. Separately scaled planes give the notebook many more
+possible combinations. They cost more than one ternary code per number, but
+they cleanly test whether residual capacity—not the basic ternary arithmetic—is
+the missing ingredient.
+
+The exact result inventory and arithmetic contract are in the
+[experiment ledger](EXPERIMENT_LEDGER_AND_ROADMAP.md). The raw story outputs are
+in the [attention generation appendix](GATED_ATTENTION_GENERATION_SAMPLES.md)
+and the
+[fully ternary generation appendix](FULLY_TERNARY_GENERATION_SAMPLES.md).
+
+## There are really three versions of “fully ternary”
+
+This is easiest to understand by imagining that every number carries a tiny
+stack of cards.
+
+- With **one ternary card**, the number can be minus, zero, or plus. This is the
+  smallest representation, but our ordinary Transformer loses too much detail.
+- With **two binary cards**, the model gets four combinations using exactly two
+  bits. Every large multiplication is still only add or subtract. This is our
+  strict two-bit-storage experiment.
+- With **two or three ternary cards**, the model gets many more combinations and
+  preserves more detail. A ternary chip can still perform every large matrix
+  operation, but the stack now occupies four or six physical bits per number.
+
+So there are three separate questions:
+
+| Question | What would count as success? |
+|---|---|
+| Can the model be stored in about two bits? | Two binary cards or one packed ternary code at every large boundary |
+| Can a ternary chip run the big calculations? | Every matrix operand contains only minus, zero, or plus, even if it uses several planes |
+| Can quality match the normal model? | The loss stays within a declared margin on exactly the same validation text |
+
+Recent papers support different boxes. BitNet v2 and TWLA show that four-bit
+activations can work very well with ternary weights. R2Q shows how two binary
+refinement planes can encode a two-bit weight. ExTernD gets close to normal-model
+quality by expanding each matrix into several ternary factors, but spends more
+storage and additions. An older but especially relevant result, TBT, generated
+summaries and translations with ternary weights **and** ternary activations.
+Residual-free Transformers try to redesign the model so the values are easier
+to compress in the first place.
+
+The newest results also explain why “two-bit” in a paper title needs careful
+reading:
+
+| Paper | What actually runs at inference | What we can borrow |
+|---|---|---|
+| TBT | Ternary BART/mBART weights and activations on generation tasks | Use `{-scale, 0, +scale}` for signed values, but `{0, scale, 2×scale}` for attention probabilities and ReLU outputs |
+| QuEST | One- to four-bit weights and activations during the forward pass; four bits gives its best accuracy-per-byte result | Keep our ternary inference values, but distrust training gradients from badly quantized entries |
+| TWLA | Ternary weights; layers choose 2, 4, 6, or 8 activation bits under an average four-bit budget | Rotate values and give sensitive layers more room |
+| BWLA | Binary weights; usually six-bit activations; a small higher-precision correction | Shape values into a quantizer-friendly distribution |
+| TurboAttention | Q/K/V calculations at eight bits; KV memory mixes two- and four-bit heads | Integer attention, small lookup tables, and head sensitivity |
+| IntAttention | The attention pipeline stays integer, but uses eight-bit operands | Integer lookup-table softmax and integer normalization |
+| BinaryAttention | Q and K keep only their signs; the rest of the Transformer is not claimed fully ternary | Bitwise Q·K plus training that preserves sign-based similarity |
+| ELiTeFormer | Ternary linear projections with hybrid linear attention on an FPGA; the cache/state is compressed but not claimed ternary | A ternary hardware datapath and a possible alternative attention architecture |
+| TeLLMe | Ternary weights with eight-bit activations for both prompt processing and token generation on an edge FPGA | Proof that a complete ternary-weight autoregressive hardware pipeline is practical, but not that ternary activations preserve quality |
+| FTerViT | Ternary weights and normalization parameters; eight-bit activations; vision rather than language | A possible ternary normalization design |
+
+None of these papers has already built our exact machine. That is why our
+experiment matters: we require the big operands to be ternary, forbid a hidden
+floating correction path, and measure story loss on the same text every time.
+
+TBT gives us one very practical correction to the mental model. A ternary
+activation does not always need to mean “minus, zero, plus.” Attention
+probabilities and ReLU outputs cannot be negative, so spending a code on minus
+would waste one third of the alphabet. TBT instead uses “zero, small, large”
+for those values. Our integer attention codes already follow that idea, while
+our signed residual planes use “minus, zero, plus.” TBT's generation quality
+still remained below its full-precision models, and its task scores are not
+comparable to TinyStories loss, so it is evidence that the route is real—not
+evidence that loss parity has already been solved.
+
+BinaryAttention offers another useful card trick. It throws away Q and K
+magnitudes and keeps only plus or minus, then teaches those signs to preserve
+the teacher's similarity pattern. That makes Q·K especially cheap, and binary
+is a valid subset of what a ternary chip can process. But the paper tested
+vision and diffusion models, used eight-bit values and eight-bit routing for
+the second attention calculation, and allowed an optional richer bias. We
+keep the Q/K trick but reject that higher-precision escape hatch: our fallback
+still uses ternary V and two-bit routing. It remains an experiment, not proof
+that the complete machine is solved.
+
+One training idea looks especially useful. Ordinary Transformers sometimes
+create a few enormous internal numbers. Compressing them is like drawing both a
+mountain and a pebble with only four shades: the pebble disappears. A method
+called Softmax-1, paired with an optimizer that spreads updates across
+directions, kept the normal model's quality while making those internal values
+far less extreme. For our integer attention, the natural version is an empty
+attention slot: the head may choose “send no message” instead of inventing an
+extreme score. We will test that only after the current matched clip and scale
+experiments, so it has a clean control.
+
+The first attention repair is already measurable. Giving the four-entry
+attention codebook a smaller range made every code usable and reduced the
+matched validation loss from 2.2512 to **2.2269**. A longer follow-up first
+worsened to 2.2553, recovered to 2.2401, and finished at 2.2490 on the shorter
+check. Reading the entire validation collection gave it **2.2354**, our best
+complete strict result so far. It also continued using all four attention
+symbols.
+
+We kept both checkpoints and retested them on the same pages before choosing
+the next experiment's source. The short run scored 2.2269 and the longer run's
+best checkpoint scored 2.2408, so the short run advances. The longer endpoint
+is still saved because it won the separate full-book measurement. This is why
+we distinguish a quick screening score from the final exhaustive score—and why
+more training time does not automatically earn a win.
+
+There is one more ordinary Transformer component to simplify. GELU is a curved
+activation function that normally needs a floating approximation. ReLU simply
+asks whether a number is positive and otherwise replaces it with zero. Our
+small experiment slightly favored ReLU, so the large experiment will give GELU
+and ReLU exactly the same extra training budget. If ReLU keeps the loss, it
+removes another awkward operation from the future ternary chip.
+
+That gives us two sensible products rather than one vague promise:
+
+1. a **strict two-bit model**, where storage wins but quality may be lower; and
+2. a **ternary-compute model**, where all large operations suit a ternary chip
+   but several code planes may be used to preserve quality.
+
+We will continue to report both, including the cost of scales and wider
+temporary sums. Calling the second model “1.58-bit” would be misleading even
+though its actual multiplications are ternary.
+
+## What happened when we tried the cards?
+
+We ran the comparison. Every model kept ternary weights, ternary Q/K/V, and the
+low-bit attention route. We changed only the number of cards used to carry the
+information between Transformer blocks.
+
+| Residual representation | Physical code bits per number | Loss |
+|---|---:|---:|
+| Two binary cards | **2** | 4.3323 |
+| Two ternary cards | 4 | 3.2882 |
+| Three ternary cards | 6 | **2.6613** |
+| Earlier four-bit activation control | 4 | 2.1126 |
+
+Lower loss is better. The exact-two-bit model works, but it still forgets too
+much. Giving each number an explicit zero choice makes a large improvement, and
+adding a third ternary card improves it again. The three-card model is far
+better than our old single-card result of 5.0989, but it still does not match
+the four-bit control.
+
+We also compared a learned COAT rotation with a fixed Hadamard rotation. After
+equal training, the fixed transform was a little better in every row. That is
+good news for hardware: Hadamard mixing is just a known pattern of additions
+and subtractions, so the model does not need a dense floating-point rotation.
+
+We then let the best versions train longer and read the entire validation book,
+not just a sample:
+
+| Finished version | Physical bits per number | Full loss |
+|---|---:|---:|
+| Two binary cards | **2** | 4.2517 |
+| Three binary cards | 3 | 3.7509 |
+| Three ternary cards | 6 | 2.5985 |
+| Five-bit average, extra cards in the noisiest layers | 5 | 2.8590 |
+| Three ternary cards plus simple ReLU | 6 | **2.5183** |
+
+Two surprises are useful. First, measuring which layers lose the most
+information is better than assuming the last layers deserve all the extra
+cards. Second, replacing the smooth GELU function with the much simpler ReLU
+made the model better. ReLU is basically “keep positive values, replace
+negative values with zero,” which is far easier to implement in small integer
+hardware.
+
+The lesson is simple. Rotation helps organize the notebook, but the number of
+symbols available in the notebook matters more. The strict two-bit version has
+now plateaued, so merely training it longer is unlikely to solve the quality
+gap. The promising route is to redesign the network for its ternary cards,
+spend extra cards only where measurements justify them, and keep every cost
+honest.
+
+The new 27.4-million-parameter normal model has now finished. Its full
+validation loss is **1.3442**, and its common-text score is about **0.495 bits
+per byte**. The released TinyStories-33M model scores about **0.554 bits per
+byte**, where lower is better. In plain language: our normal-sized teacher is
+good enough. If its ternary children fall behind, we can no longer blame an
+undertrained teacher.
+
+The first ternary child has also finished. Its full loss is **1.5355**, and its
+common-text score is about **0.566 bits per byte**—only around 2.2% behind the
+released TinyStories-33M model, though still behind its own stronger parent.
+Its deployable ternary-weight file is about **7.5 MB**. That is encouraging for
+the weights; the next tests ask how much quality is lost when the messages
+moving between layers are reduced as well.
+
+The first message-compression test is now finished. Keeping ternary weights but
+using four-bit messages produces **1.8001 loss**, compared with **1.5355** when
+those messages remain ordinary floating-point values. So four bits are usable,
+but they are not free: the model loses a noticeable amount of story-prediction
+quality.
+
+The stricter 27.4-million-parameter model has now finished too. It makes Q, K,
+and V ternary, routes attention with four tiny integer choices, and carries
+each between-block message on three ternary cards. Its best saved checkpoint
+scores **2.2410 loss**; continuing the same setup to 30,000 steps makes it
+worse, at **2.3039**. The normal model remains at **1.3442**, and ternary
+weights with ordinary messages remain at **1.5355**. So the honest answer is:
+we have a working ternary-style inference graph that writes recognizable
+stories, but it does not yet preserve the normal model's quality.
+
+The failure is informative. As training continued, about 88% of possible
+attention routes became zero and the variety of attention choices kept
+shrinking. Think of eight people in a meeting where most message channels have
+gone silent. Training longer cannot fix a language model if its communication
+system is collapsing.
+
+The next experiments therefore change that communication system one piece at
+a time. We will try a smaller attention range so all four route cards are
+actually used, give Q/K/V one stable scale per head, add a legitimate
+“send no message” choice, compare GELU with simple ReLU, try binary Q/K with
+ternary V, and finally replace floating RMS normalization with its exact
+integer reference. Each candidate receives the same training and validation
+budget as its control. A readable sample alone cannot win; the full validation
+loss and the ternary/integer arithmetic audit must also pass.
+
+We will finish with two named answers. The **quality winner** is allowed to
+reject a stricter replacement when the loss gets worse. The **strict hardware
+endpoint** must use stable per-head scales, ternary Q/K/V, simple ReLU,
+low-bit integer attention, and integer RMS normalization even if its stories
+score lower. The export checker must confirm the ternary-operand contract
+before that second model can be called complete.
+
+The first test of that split has now finished. Letting every token choose its
+own measuring scale gives **2.2309 loss**. Replacing those changing scales with
+one stable scale per attention head gives **2.3097**. The stable version is
+easier to build into a ternary chip, but it loses some story quality. Both
+models still use all four tiny attention choices, so this is not another
+collapsed-attention failure.
+
+For the next quality experiment we kept the untouched 2.2269 checkpoint,
+because an identical quick comparison showed that both extra-trained versions
+were worse. The stable-scale model is still saved for the separate strict
+hardware endpoint. This is the practical meaning of our two-answer rule:
+“best storyteller” and “cleanest ternary machine” do not have to be the same
+checkpoint while the research is unfinished.
+
+We also tested the special “send no message” attention card. The model really
+used it—about 1.5% of attention mass went to that card—but its full loss was
+**2.2417**, compared with **2.2309** for ordinary tiny-integer attention. So
+the card is mathematically valid and trainable, yet it does not improve this
+model. We keep ordinary attention for the quality path and preserve the
+no-message version as evidence for future architectures.
+
+There was a happier surprise in the story-writing part of the network. Normal
+Transformers often use GELU, a smooth curved rule that is awkward for a tiny
+integer chip. We trained an otherwise identical model with ReLU, the much
+simpler rule “throw away negative numbers; keep positive numbers.” GELU scored
+**2.2309 loss**. ReLU scored **2.1609**, so the simpler rule actually wrote
+better stories in this matched test.
+
+That ReLU model is our best low-bit quality result so far. It still is not the
+finished ternary machine, because every token is allowed to choose a changing
+Q/K/V measuring scale. The final hardware test removes that freedom: it uses
+one stable scale per attention head, ternary Q/K/V, ReLU, tiny integer
+attention choices, and integer normalization. Its separate result appears
+below. This keeps two claims honest: how well the model tells a story, and how
+completely its large inference operations fit a ternary chip.
+
+We also replaced the ordinary RMSNorm calculation with an integer-reference
+version. Think of RMSNorm as the volume control before a layer: it measures how
+large the current numbers are and turns them up or down. On the entire
+validation set, loss moved from 2.160893 to **2.160526** (perplexity 8.6757).
+That tiny improvement is effectively a tie, which is the useful result: this
+normalization step does not need floating-point arithmetic to preserve model
+quality. The quality model's remaining hardware mismatch is its
+input-dependent QKV scale, not RMSNorm.
+
+The final hardware test is now finished too. It replaces each token's changing
+Q/K/V measuring scale with one stable scale for each attention head. Its loss
+is **2.250638** and its perplexity is **9.4938**. That is 0.090112 worse than
+the best storyteller, but the packed model passes every large-operand rule:
+ternary weights and Q/K/V, tiny integer attention cards, ternary residual
+planes, simple ReLU, and integer normalization.
+
+There are two honest footnotes. First, three ternary residual planes take six
+physical bits per number, even though every plane uses only minus, zero, and
+plus. This is a ternary-compute model, not yet an exact two-bit-storage model.
+Second, the temporary sums must be wider so that hundreds of small products do
+not overflow, and the final random word choice still uses Softmax. A future
+ternary chip can keep the expensive matrix operands ternary and immediately
+round each wide sum back to the next small code; “wide accumulator” does not
+mean the next layer becomes floating point.
+
+We also asked whether Q and K could be even simpler: only minus or plus, with
+no zero card. That would make them binary, which a ternary chip can execute.
+After equal extra training, ternary Q/K/V scored **2.1718 loss** while binary
+Q/K with ternary V scored **2.3078**. Removing zero made attention worse, not
+better. In this model, “say nothing in this direction” is useful information.
+We therefore keep all three Q/K/V choices—minus, zero, and plus—for the quality
+path and the final strict hardware path.
