@@ -37,6 +37,7 @@ ternary-audit-artifacts = "ternary_llm.artifacts:main"
 ternary-publish-hf = "ternary_llm.publish_hf:main"
 ternary-overnight-summary = "ternary_llm.overnight_summary:main"
 ternary-completion-audit = "ternary_llm.completion_audit:main"
+ternary-hardware-poc = "ternary_llm.hardware:main"
 
 [build-system]
 requires = ["hatchling"]

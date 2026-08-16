@@ -1,0 +1,9 @@
+metric,value,evidence
+Packed artifact bytes,7513503,measured
+Ternary scalar count,29499904,measured
+Weight zero fraction,0.3162444528633042,measured
+Low-bit contributions/token,83969024,analytical from architecture
+Scenario cycles/token,34168,scenario
+Scenario raw tokens/s,14633.575275111214,scenario
+Scenario energy uJ/token,15.203641600000001,scenario
+Scenario packaged tested cost USD,7.640893369560805,illustrative economics
